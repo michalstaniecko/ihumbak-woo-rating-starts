@@ -4,7 +4,7 @@
 
 .ihumbak-wrs-widget {
     margin: 15px 0;
-    padding: 15px;
+    padding: 8px;
     background: #f9f9f9;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -12,6 +12,8 @@
 
 .ihumbak-wrs-container {
     position: relative;
+    display: grid;
+    gap: 4px;
 }
 
 .ihumbak-wrs-stars-wrapper {
@@ -34,7 +36,7 @@
 }
 
 .ihumbak-wrs-stars .star {
-    font-size: 28px;
+    font-size: 20px;
     color: #ddd;
     transition: all 0.2s ease;
     cursor: pointer;
@@ -62,10 +64,10 @@
 }
 
 .ihumbak-wrs-message {
-    margin-top: 10px;
-    padding: 10px 15px;
+    padding: 8px;
     border-radius: 4px;
-    font-size: 14px;
+    font-size: 12px;
+    line-height: 1.2;
 }
 
 .ihumbak-wrs-message.success {
@@ -107,11 +109,11 @@
     .ihumbak-wrs-widget {
         padding: 12px;
     }
-    
+
     .ihumbak-wrs-stars .star {
         font-size: 24px;
     }
-    
+
     .ihumbak-wrs-label {
         font-size: 13px;
     }

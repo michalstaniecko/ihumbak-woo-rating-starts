@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce Quick Ratings & Reviews
  * Plugin URI: https://github.com/ihumbak/woo-rating-stars
  * Description: System szybkich ocen gwiazdkowych dla WooCommerce z integracją recenzji
- * Version: 1.0.4
+ * Version: 1.0.5
  * Author: iHumbak
  * Author URI: https://ihumbak.com
  * Text Domain: ihumbak-woo-rating-stars
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('IHUMBAK_WRS_VERSION', '1.0.4');
+define('IHUMBAK_WRS_VERSION', '1.0.5');
 define('IHUMBAK_WRS_PLUGIN_FILE', __FILE__);
 define('IHUMBAK_WRS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('IHUMBAK_WRS_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -91,7 +91,7 @@ final class Ihumbak_WooCommerce_Rating_Stars {
         new Ihumbak_WRS_Rating_Calculator();
         new Ihumbak_WRS_REST_API_Handler();
         new Ihumbak_WRS_WooCommerce_Integration();
-        
+
         // SEO & Schema.org
         new Ihumbak_WRS_Schema_Markup();
 
@@ -125,6 +125,7 @@ final class Ihumbak_WooCommerce_Rating_Stars {
         // Set default options
         add_option('ihumbak_wrs_enabled', 'yes');
         add_option('ihumbak_wrs_require_login', 'no');
+        add_option('ihumbak_wrs_admin_only', 'no');
         add_option('ihumbak_wrs_widget_position', 'after_title');
         add_option('ihumbak_wrs_show_count', 'yes');
         add_option('ihumbak_wrs_star_color', '#ffc107');

@@ -26,6 +26,11 @@ class Ihumbak_WRS_Assets_Manager {
             return;
         }
         
+        // Check admin-only mode
+        if (get_option('ihumbak_wrs_admin_only') === 'yes' && !current_user_can('manage_options')) {
+            return;
+        }
+        
         global $product;
         
         if (!$product || !is_object($product)) {

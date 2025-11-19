@@ -20,6 +20,7 @@ class Ihumbak_WRS_Admin_Settings {
     public function register_settings() {
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_enabled');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_require_login');
+        register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_admin_only');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_widget_position');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_show_count');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_star_color');
@@ -100,6 +101,26 @@ class Ihumbak_WRS_Admin_Settings {
                             </select>
                             <p class="description">
                                 <?php esc_html_e('Choose where to display the rating widget', 'ihumbak-woo-rating-stars'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row">
+                            <label for="ihumbak_wrs_admin_only">
+                                <?php esc_html_e('Admin Only Mode (Debug)', 'ihumbak-woo-rating-stars'); ?>
+                            </label>
+                        </th>
+                        <td>
+                            <input type="checkbox" 
+                                   id="ihumbak_wrs_admin_only" 
+                                   name="ihumbak_wrs_admin_only" 
+                                   value="yes" 
+                                   <?php checked(get_option('ihumbak_wrs_admin_only'), 'yes'); ?>>
+                            <p class="description">
+                                <?php esc_html_e('Show rating widget only to logged-in administrators. Perfect for testing before going live!', 'ihumbak-woo-rating-stars'); ?>
+                                <br>
+                                <strong style="color: #d63638;">⚠️ <?php esc_html_e('Warning: Regular users will not see the widget when this is enabled.', 'ihumbak-woo-rating-stars'); ?></strong>
                             </p>
                         </td>
                     </tr>
@@ -188,6 +209,7 @@ class Ihumbak_WRS_Admin_Settings {
     private function save_settings() {
         update_option('ihumbak_wrs_enabled', isset($_POST['ihumbak_wrs_enabled']) ? 'yes' : 'no');
         update_option('ihumbak_wrs_require_login', isset($_POST['ihumbak_wrs_require_login']) ? 'yes' : 'no');
+        update_option('ihumbak_wrs_admin_only', isset($_POST['ihumbak_wrs_admin_only']) ? 'yes' : 'no');
         update_option('ihumbak_wrs_widget_position', sanitize_text_field($_POST['ihumbak_wrs_widget_position']));
         update_option('ihumbak_wrs_show_count', isset($_POST['ihumbak_wrs_show_count']) ? 'yes' : 'no');
         update_option('ihumbak_wrs_star_color', sanitize_hex_color($_POST['ihumbak_wrs_star_color']));

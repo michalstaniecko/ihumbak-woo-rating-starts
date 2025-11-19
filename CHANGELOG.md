@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.5] - 2025-11-19
+
+### Added
+- ✅ **Admin Only Mode (Debug)** - nowa opcja w ustawieniach
+- ✅ Widget widoczny tylko dla zalogowanych administratorów
+- ✅ Idealne do testowania przed uruchomieniem na produkcji
+- ✅ Wizualne ostrzeżenie dla admina w widgecie
+- ✅ Sprawdzanie `current_user_can('manage_options')` w Frontend Render i Assets Manager
+
+### Changed
+- Nowe ustawienie: "Admin Only Mode (Debug)" w Settings
+- Template pokazuje żółte ostrzeżenie dla adminów w trybie debug
+- Frontend Render i Assets Manager sprawdzają tryb admin-only
+- Domyślna wartość: 'no' (wyłączone)
+
+### Use Cases
+- 🧪 Testowanie pluginu przed publicznym uruchomieniem
+- 🔍 Debugowanie problemów z widgetem
+- 🎨 Sprawdzanie wyglądu i pozycji widgetu
+- ✅ Weryfikacja funkcjonalności oceniania
+
 ## [1.0.4] - 2025-11-19
 
 ### Added

@@ -28,6 +28,11 @@ class Ihumbak_WRS_Frontend_Render {
             return;
         }
         
+        // Check admin-only mode
+        if (get_option('ihumbak_wrs_admin_only') === 'yes' && !current_user_can('manage_options')) {
+            return;
+        }
+        
         $position = get_option('ihumbak_wrs_widget_position', 'after_title');
         
         switch ($position) {

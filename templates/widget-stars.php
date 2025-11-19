@@ -12,6 +12,14 @@ if (!defined('ABSPATH')) {
      <?php if ($stats['total_count'] > 0): ?>
      itemscope itemtype="https://schema.org/AggregateRating" itemprop="aggregateRating"
      <?php endif; ?>>
+    
+    <?php if (get_option('ihumbak_wrs_admin_only') === 'yes' && current_user_can('manage_options')): ?>
+        <div class="ihumbak-wrs-admin-notice" style="background: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin-bottom: 10px; border-radius: 4px;">
+            <strong>🔒 <?php esc_html_e('Admin Only Mode:', 'ihumbak-woo-rating-stars'); ?></strong>
+            <?php esc_html_e('Only you (admin) can see this widget. Regular users cannot see it.', 'ihumbak-woo-rating-stars'); ?>
+        </div>
+    <?php endif; ?>
+    
     <div class="ihumbak-wrs-container">
         <div class="ihumbak-wrs-message success" style="display:<?php echo $user_rating > 0 ? 'block' : 'none'; ?>">
             <?php echo esc_html($text_thanks); ?>

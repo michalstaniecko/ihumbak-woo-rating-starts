@@ -16,6 +16,7 @@ $wpdb->query("DROP TABLE IF EXISTS {$table_name}");
 // Delete plugin options
 delete_option('ihumbak_wrs_enabled');
 delete_option('ihumbak_wrs_require_login');
+delete_option('ihumbak_wrs_admin_only');
 delete_option('ihumbak_wrs_widget_position');
 delete_option('ihumbak_wrs_show_count');
 delete_option('ihumbak_wrs_star_color');
