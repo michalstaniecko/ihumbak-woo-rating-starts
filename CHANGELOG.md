@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.7] - 2025-11-19
+
+### Added
+- ✅ **Opcja ukrywania liczby ocen w loop** - nowe ustawienie w Settings
+- ✅ "Hide Count in Product Loop" - ukrywa tekst "(25)" przy gwiazdkach
+- ✅ Zachowuje gwiazdki widoczne (tylko ukrywa liczbę)
+- ✅ Działa dla: shop page, category, archive, related, upsells, cross-sells
+- ✅ Implementacja przez CSS (lekka, nie wpływa na performance)
+
+### Changed
+- Admin Settings: nowa opcja checkbox
+- WooCommerce Integration: CSS injection w `wp_head`
+- Targeting specific selectors dla WooCommerce loop
+
+### Use Case
+Dla sklepów które chcą pokazać tylko gwiazdki wizualnie, bez liczby ocen w tekście.
+
+## [1.0.6] - 2025-11-19
+
+### Fixed
+- ✅ **Gwiazdki na liście produktów** teraz pokazują kombinowaną średnią (quick + reviews)
+- ✅ Automatyczna aktualizacja WooCommerce meta (`_wc_average_rating`, `_wc_rating_count`)
+- ✅ Rozszerzone czyszczenie cache po każdej ocenie
+- ✅ Synchronizacja ratingu we wszystkich miejscach WooCommerce (shop loop, widgets, related products)
+
+### Added
+- Metoda `update_wc_product_meta()` w Rating Model
+- Metoda `sync_product_rating_meta()` w WooCommerce Integration
+- Hooki dla aktualizacji meta przy zmianach recenzji
+- Czyszczenie WooCommerce transients (`wc_delete_product_transients()`)
+- Usuwanie WC meta przy cache clear (force recalculation)
+
+### Changed
+- Rating Model: rozszerzone `clear_product_cache()` - czyści wszystkie transients
+- Rating Model: wywołanie `update_wc_product_meta()` po add/update/delete rating
+- WooCommerce Integration: hooki dla comment_post, edit_comment, trashed_comment, etc.
+- Post meta `_wc_average_rating` aktualizowane automatycznie przy każdej zmianie
+
+### Technical Details
+**Problem:** WooCommerce cache'ował stare wartości rating w loop products
+**Rozwiązanie:** 
+1. Aktualizacja WC meta po każdej zmianie quick rating
+2. Czyszczenie wszystkich cache WooCommerce
+3. Synchronizacja przy zmianach recenzji (comments)
+4. Force recalculation przez usuwanie meta
+
 ## [1.0.5] - 2025-11-19
 
 ### Added

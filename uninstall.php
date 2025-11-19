@@ -19,6 +19,7 @@ delete_option('ihumbak_wrs_require_login');
 delete_option('ihumbak_wrs_admin_only');
 delete_option('ihumbak_wrs_widget_position');
 delete_option('ihumbak_wrs_show_count');
+delete_option('ihumbak_wrs_hide_count_in_loop');
 delete_option('ihumbak_wrs_star_color');
 delete_option('ihumbak_wrs_text_rate');
 delete_option('ihumbak_wrs_text_thanks');

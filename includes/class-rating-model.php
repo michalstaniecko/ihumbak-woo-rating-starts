@@ -91,6 +91,9 @@ class Ihumbak_WRS_Rating_Model {
         // Clear cache
         $this->clear_product_cache($product_id);
         
+        // Update WooCommerce product rating meta
+        $this->update_wc_product_meta($product_id);
+        
         return $wpdb->insert_id;
     }
     
@@ -129,6 +132,7 @@ class Ihumbak_WRS_Rating_Model {
         // Clear cache
         if ($rating) {
             $this->clear_product_cache($rating->product_id);
+            $this->update_wc_product_meta($rating->product_id);
         }
         
         return $rating_id;
@@ -159,6 +163,7 @@ class Ihumbak_WRS_Rating_Model {
         // Clear cache
         if ($rating) {
             $this->clear_product_cache($rating->product_id);
+            $this->update_wc_product_meta($rating->product_id);
         }
         
         return true;
@@ -238,7 +243,41 @@ class Ihumbak_WRS_Rating_Model {
      * Clear product cache
      */
     private function clear_product_cache($product_id) {
+        // Clear plugin transients
         delete_transient('ihumbak_wrs_stats_' . $product_id);
+        delete_transient('ihumbak_wrs_quick_avg_' . $product_id);
+        delete_transient('ihumbak_wrs_combined_avg_' . $product_id);
+        delete_transient('ihumbak_wrs_total_count_' . $product_id);
+        delete_transient('ihumbak_wrs_distribution_' . $product_id);
+        
+        // Clear WordPress cache
         wp_cache_delete('product-' . $product_id, 'products');
+        
+        // Clear WooCommerce product transients
+        if (function_exists('wc_delete_product_transients')) {
+            wc_delete_product_transients($product_id);
+        }
+        
+        // Force WooCommerce to recalculate rating on next request
+        delete_post_meta($product_id, '_wc_average_rating');
+        delete_post_meta($product_id, '_wc_rating_count');
+        delete_post_meta($product_id, '_wc_review_count');
+        
+        // Clear product object cache
+        clean_post_cache($product_id);
+    }
+    
+    /**
+     * Update WooCommerce product rating meta
+     */
+    private function update_wc_product_meta($product_id) {
+        // Get combined stats
+        $calculator = new Ihumbak_WRS_Rating_Calculator();
+        $stats = $calculator->get_product_stats($product_id);
+        
+        // Update WooCommerce meta
+        update_post_meta($product_id, '_wc_average_rating', number_format($stats['average'], 2));
+        update_post_meta($product_id, '_wc_rating_count', $stats['total_count']);
+        update_post_meta($product_id, '_wc_review_count', $stats['review_count']);
     }
 }

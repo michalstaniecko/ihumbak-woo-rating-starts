@@ -23,6 +23,7 @@ class Ihumbak_WRS_Admin_Settings {
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_admin_only');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_widget_position');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_show_count');
+        register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_hide_count_in_loop');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_star_color');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_text_rate');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_text_thanks');
@@ -145,6 +146,26 @@ class Ihumbak_WRS_Admin_Settings {
                     
                     <tr>
                         <th scope="row">
+                            <label for="ihumbak_wrs_hide_count_in_loop">
+                                <?php esc_html_e('Hide Count in Product Loop', 'ihumbak-woo-rating-stars'); ?>
+                            </label>
+                        </th>
+                        <td>
+                            <input type="checkbox" 
+                                   id="ihumbak_wrs_hide_count_in_loop" 
+                                   name="ihumbak_wrs_hide_count_in_loop" 
+                                   value="yes" 
+                                   <?php checked(get_option('ihumbak_wrs_hide_count_in_loop'), 'yes'); ?>>
+                            <p class="description">
+                                <?php esc_html_e('Hide rating count text in shop loop (catalog/archive pages). Stars will still be visible.', 'ihumbak-woo-rating-stars'); ?>
+                                <br>
+                                <em><?php esc_html_e('Example: Shows ★★★★★ instead of ★★★★★ (25)', 'ihumbak-woo-rating-stars'); ?></em>
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row">
                             <label for="ihumbak_wrs_star_color">
                                 <?php esc_html_e('Star Color', 'ihumbak-woo-rating-stars'); ?>
                             </label>
@@ -212,6 +233,7 @@ class Ihumbak_WRS_Admin_Settings {
         update_option('ihumbak_wrs_admin_only', isset($_POST['ihumbak_wrs_admin_only']) ? 'yes' : 'no');
         update_option('ihumbak_wrs_widget_position', sanitize_text_field($_POST['ihumbak_wrs_widget_position']));
         update_option('ihumbak_wrs_show_count', isset($_POST['ihumbak_wrs_show_count']) ? 'yes' : 'no');
+        update_option('ihumbak_wrs_hide_count_in_loop', isset($_POST['ihumbak_wrs_hide_count_in_loop']) ? 'yes' : 'no');
         update_option('ihumbak_wrs_star_color', sanitize_hex_color($_POST['ihumbak_wrs_star_color']));
         update_option('ihumbak_wrs_text_rate', sanitize_text_field($_POST['ihumbak_wrs_text_rate']));
         update_option('ihumbak_wrs_text_thanks', sanitize_text_field($_POST['ihumbak_wrs_text_thanks']));
