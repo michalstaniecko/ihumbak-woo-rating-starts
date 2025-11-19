@@ -1,0 +1,29 @@
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "@id": "https://example.com/product/wireless-headphones/#product",
+  "name": "Wireless Headphones Pro",
+  "description": "Premium wireless headphones with noise cancellation and 30-hour battery life.",
+  "sku": "WH-PRO-123",
+  "image": "https://example.com/wp-content/uploads/2025/headphones.jpg",
+  "brand": {
+    "@type": "Brand",
+    "name": "AudioTech"
+  },
+  "offers": {
+    "@type": "Offer",
+    "price": "299.99",
+    "priceCurrency": "PLN",
+    "availability": "https://schema.org/InStock",
+    "url": "https://example.com/product/wireless-headphones/",
+    "priceValidUntil": "2025-12-31"
+  },
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.65",
+    "reviewCount": "28",
+    "ratingCount": "187",
+    "bestRating": "5",
+    "worstRating": "1"
+  }
+}
