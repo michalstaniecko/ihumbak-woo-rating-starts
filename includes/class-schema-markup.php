@@ -14,9 +14,8 @@ class Ihumbak_WRS_Schema_Markup {
     
     public function __construct() {
         $this->calculator = new Ihumbak_WRS_Rating_Calculator();
-        
+
         if (get_option('ihumbak_wrs_enabled') === 'yes') {
-            add_action('wp_footer', array($this, 'add_product_schema'), 5);
             add_filter('woocommerce_structured_data_product', array($this, 'modify_wc_schema'), 10, 2);
         }
     }
@@ -64,14 +63,7 @@ class Ihumbak_WRS_Schema_Markup {
             '@id' => get_permalink($product->get_id()) . '#product',
             'name' => $product->get_name(),
             'description' => wp_strip_all_tags($product->get_short_description() ?: $product->get_description()),
-            'aggregateRating' => array(
-                '@type' => 'AggregateRating',
-                'ratingValue' => number_format($stats['average'], 2),
-                'reviewCount' => $stats['review_count'], // Only reviews with text
-                'ratingCount' => $stats['total_count'], // All ratings (quick + reviews)
-                'bestRating' => '5',
-                'worstRating' => '1'
-            )
+            'aggregateRating' => $this->build_aggregate_rating($stats)
         );
         
         // Add SKU if available
@@ -120,28 +112,35 @@ class Ihumbak_WRS_Schema_Markup {
      * Modify WooCommerce's built-in schema
      */
     public function modify_wc_schema($markup, $product) {
-        if (!isset($markup['aggregateRating'])) {
-            return $markup;
-        }
-        
         $product_id = $product->get_id();
         $stats = $this->calculator->get_product_stats($product_id);
-        
+
         if ($stats['total_count'] > 0) {
-            // Update WooCommerce schema with combined ratings
-            $markup['aggregateRating'] = array(
-                '@type' => 'AggregateRating',
-                'ratingValue' => number_format($stats['average'], 2),
-                'reviewCount' => $stats['review_count'],
-                'ratingCount' => $stats['total_count'],
-                'bestRating' => '5',
-                'worstRating' => '1'
-            );
+            $markup['aggregateRating'] = $this->build_aggregate_rating($stats);
         }
-        
+
         return $markup;
     }
     
+    /**
+     * Build AggregateRating array for schema
+     */
+    private function build_aggregate_rating($stats) {
+        $aggregate = array(
+            '@type' => 'AggregateRating',
+            'ratingValue' => number_format($stats['average'], 2),
+            'ratingCount' => $stats['total_count'],
+            'bestRating' => '5',
+            'worstRating' => '1'
+        );
+
+        if ($stats['review_count'] > 0) {
+            $aggregate['reviewCount'] = $stats['review_count'];
+        }
+
+        return $aggregate;
+    }
+
     /**
      * Add microdata attributes to widget (optional - for older SEO)
      */

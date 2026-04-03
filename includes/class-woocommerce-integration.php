@@ -17,6 +17,8 @@ class Ihumbak_WRS_WooCommerce_Integration {
         
         add_filter('woocommerce_product_get_average_rating', array($this, 'modify_average_rating'), 10, 2);
         add_filter('woocommerce_product_get_rating_count', array($this, 'modify_rating_count'), 10, 2);
+        add_filter('woocommerce_product_get_rating_counts', array($this, 'modify_rating_counts'), 10, 2);
+        add_filter('woocommerce_product_get_review_count', array($this, 'modify_review_count'), 10, 2);
         add_filter('woocommerce_product_get_rating_html', array($this, 'modify_rating_html'), 10, 3);
         
         // Hide rating count in loop if option enabled
@@ -60,6 +62,39 @@ class Ihumbak_WRS_WooCommerce_Integration {
         return $total_count;
     }
     
+    /**
+     * Modify rating counts (per-star distribution) to include quick ratings
+     */
+    public function modify_rating_counts($counts, $product) {
+        if (get_option('ihumbak_wrs_enabled') !== 'yes') {
+            return $counts;
+        }
+
+        $product_id = $product->get_id();
+        $distribution = $this->calculator->get_rating_distribution($product_id);
+
+        $combined = array();
+        for ($i = 5; $i >= 1; $i--) {
+            $combined[$i] = $distribution[$i];
+        }
+
+        return $combined;
+    }
+
+    /**
+     * Modify review count to show total ratings (quick + reviews)
+     */
+    public function modify_review_count($count, $product) {
+        if (get_option('ihumbak_wrs_enabled') !== 'yes') {
+            return $count;
+        }
+
+        $product_id = $product->get_id();
+        $total_count = $this->calculator->get_total_rating_count($product_id);
+
+        return $total_count;
+    }
+
     /**
      * Modify rating HTML
      */
@@ -120,7 +155,7 @@ class Ihumbak_WRS_WooCommerce_Integration {
         // Update WooCommerce meta with combined data
         update_post_meta($product_id, '_wc_average_rating', number_format($stats['average'], 2));
         update_post_meta($product_id, '_wc_rating_count', $stats['total_count']);
-        update_post_meta($product_id, '_wc_review_count', $stats['review_count']);
+        update_post_meta($product_id, '_wc_review_count', $stats['total_count']);
         
         // Clear cache
         if (function_exists('wc_delete_product_transients')) {

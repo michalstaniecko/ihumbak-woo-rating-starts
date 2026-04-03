@@ -45,9 +45,16 @@ final class Ihumbak_WooCommerce_Rating_Stars {
     }
 
     private function __construct() {
-        //$this->check_requirements();
+				add_action('before_woocommerce_init', array($this, 'declare_compatibility'));
         $this->init_hooks();
     }
+
+		public function declare_compatibility() {
+				if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+						\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+						\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('cart_checkout_blocks', __FILE__, true);
+				}
+		}
 
     private function check_requirements() {
         if (!class_exists('WooCommerce')) {
@@ -71,6 +78,7 @@ final class Ihumbak_WooCommerce_Rating_Stars {
     }
 
     public function init() {
+			  $this->check_requirements();
         if (!class_exists('WooCommerce')) {
             return;
         }
