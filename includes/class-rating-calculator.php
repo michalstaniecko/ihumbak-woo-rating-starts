@@ -15,6 +15,21 @@ class Ihumbak_WRS_Rating_Calculator {
     public function __construct() {
         $this->rating_model = new Ihumbak_WRS_Rating_Model();
     }
+
+    /**
+     * Get WooCommerce review count directly from DB (bypasses filters to prevent infinite loop)
+     */
+    private function get_wc_review_count($product_id) {
+        global $wpdb;
+
+        return (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->comments}
+             WHERE comment_post_ID = %d
+             AND comment_approved = '1'
+             AND comment_type = 'review'",
+            $product_id
+        ));
+    }
     
     /**
      * Get quick ratings average for product
@@ -38,13 +53,7 @@ class Ihumbak_WRS_Rating_Calculator {
      * Get WooCommerce reviews average for product
      */
     public function get_reviews_average($product_id) {
-        $product = wc_get_product($product_id);
-        
-        if (!$product) {
-            return 0;
-        }
-        
-        $review_count = $product->get_review_count();
+        $review_count = $this->get_wc_review_count($product_id);
         
         if ($review_count === 0) {
             return 0;
@@ -78,9 +87,8 @@ class Ihumbak_WRS_Rating_Calculator {
         
         $quick_count = $this->rating_model->get_rating_count($product_id);
         $quick_sum = $quick_count > 0 ? $this->get_quick_ratings_average($product_id) * $quick_count : 0;
-        
-        $product = wc_get_product($product_id);
-        $review_count = $product ? $product->get_review_count() : 0;
+
+        $review_count = $this->get_wc_review_count($product_id);
         $review_sum = $review_count > 0 ? $this->get_reviews_average($product_id) * $review_count : 0;
         
         $total_count = $quick_count + $review_count;
@@ -108,10 +116,8 @@ class Ihumbak_WRS_Rating_Calculator {
         }
         
         $quick_count = $this->rating_model->get_rating_count($product_id);
-        
-        $product = wc_get_product($product_id);
-        $review_count = $product ? $product->get_review_count() : 0;
-        
+        $review_count = $this->get_wc_review_count($product_id);
+
         $total = $quick_count + $review_count;
         
         set_transient($cache_key, $total, HOUR_IN_SECONDS);
@@ -183,10 +189,7 @@ class Ihumbak_WRS_Rating_Calculator {
             'distribution' => $this->get_rating_distribution($product_id)
         );
         
-        $product = wc_get_product($product_id);
-        if ($product) {
-            $stats['review_count'] = $product->get_review_count();
-        }
+        $stats['review_count'] = $this->get_wc_review_count($product_id);
         
         set_transient($cache_key, $stats, HOUR_IN_SECONDS);
         
