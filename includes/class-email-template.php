@@ -22,6 +22,7 @@ class Ihumbak_WRS_Email_Template {
     const KNOWN_PLACEHOLDERS = array(
         'customer_name',
         'customer_first_name',
+        'customer_last_name',
         'order_number',
         'order_date',
         'site_name',

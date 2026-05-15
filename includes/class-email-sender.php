@@ -176,6 +176,7 @@ class Ihumbak_WRS_Email_Sender {
 		$html_context = array(
 			'customer_name'       => esc_html( $context['customer_name'] ),
 			'customer_first_name' => esc_html( $context['customer_first_name'] ),
+			'customer_last_name'  => esc_html( $context['customer_last_name'] ),
 			'order_number'        => esc_html( $context['order_number'] ),
 			'order_date'          => esc_html( $context['order_date'] ),
 			'site_name'           => esc_html( $context['site_name'] ),
@@ -461,6 +462,7 @@ class Ihumbak_WRS_Email_Sender {
 		return array(
 			'customer_name'       => $order->get_formatted_billing_full_name(),
 			'customer_first_name' => $order->get_billing_first_name(),
+			'customer_last_name'  => $order->get_billing_last_name(),
 			'order_number'        => (string) $order->get_order_number(),
 			'order_date'          => $order_date,
 			'site_name'           => get_bloginfo( 'name' ),
