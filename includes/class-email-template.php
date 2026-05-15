@@ -27,6 +27,8 @@ class Ihumbak_WRS_Email_Template {
         'order_date',
         'site_name',
         'site_url',
+        'products_list',
+        'rating_links_list',
     );
 
     /**

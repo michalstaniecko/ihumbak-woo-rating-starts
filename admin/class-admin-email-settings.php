@@ -479,7 +479,7 @@ class Ihumbak_WRS_Admin_Email_Settings {
             echo '<li><code>' . esc_html( '{' . $key . '}' ) . '</code> — ' . esc_html( $desc ) . '</li>';
         }
         echo '</ul>';
-        echo '<p><em>' . esc_html__( 'Silnik podstawiania placeholderów zostanie zaimplementowany w osobnym zgłoszeniu.', 'ihumbak-woo-rating-stars' ) . '</em></p>';
+        echo '<p><em>' . esc_html__( 'Placeholdery {products_list} i {rating_links_list} są w pełni obsługiwane. Placeholder {coupon_code} zostanie dodany w kolejnym etapie.', 'ihumbak-woo-rating-stars' ) . '</em></p>';
     }
 
     /**

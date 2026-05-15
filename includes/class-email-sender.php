@@ -164,25 +164,23 @@ class Ihumbak_WRS_Email_Sender {
 		}
 
 		// Krok 9 — Budowanie kontekstu, render, dispatch.
-		$context = $this->build_context( $order );
-
 		$raw_subject = (string) get_option( 'ihumbak_wrs_email_subject', '' );
 		$raw_body    = (string) get_option( 'ihumbak_wrs_email_body', '' );
 
 		// Temat renderowany z surowymi wartościami (nagłówek plain-text).
-		$subject = Ihumbak_WRS_Email_Template::render( $raw_subject, $context );
-
-		// Treść renderowana z wartościami bezpiecznymi HTML (wywołujący odpowiada za escaping).
-		$html_context = array(
-			'customer_name'       => esc_html( $context['customer_name'] ),
-			'customer_first_name' => esc_html( $context['customer_first_name'] ),
-			'customer_last_name'  => esc_html( $context['customer_last_name'] ),
-			'order_number'        => esc_html( $context['order_number'] ),
-			'order_date'          => esc_html( $context['order_date'] ),
-			'site_name'           => esc_html( $context['site_name'] ),
-			'site_url'            => esc_url( $context['site_url'] ),
+		// Dla products_list i rating_links_list podstawiamy pusty ciąg — zapobiega
+		// to wyciekowi surowego HTML do tematu, gdy admin omyłkowo wstawi te tokeny.
+		$subject_context = $this->build_context( $order ) + array(
+			'products_list'     => '',
+			'rating_links_list' => '',
 		);
-		$body = Ihumbak_WRS_Email_Template::render( $raw_body, $html_context );
+		$subject = Ihumbak_WRS_Email_Template::render( $raw_subject, $subject_context );
+
+		// Treść renderowana z wartościami bezpiecznymi HTML.
+		// Skalary są escapowane przez esc_html()/esc_url(); listy produktów
+		// są już bezpiecznym HTML z Ihumbak_WRS_Email_Product_List — nie escapować.
+		$html_context = $this->build_html_context( $order, $items );
+		$body         = Ihumbak_WRS_Email_Template::render( $raw_body, $html_context );
 
 		if ( '' === trim( $subject ) || '' === trim( $body ) ) {
 			$this->log_failure(
@@ -443,15 +441,14 @@ class Ihumbak_WRS_Email_Sender {
 	/**
 	 * Buduje tablicę kontekstu przekazywaną do Ihumbak_WRS_Email_Template::render().
 	 *
-	 * Wartości surowe (nie-HTML) — escaping odbywa się w process() przed wywołaniem
-	 * render() dla body lub jest pominięty dla subject (nagłówek plain-text).
+	 * Wartości surowe (nie-HTML) — escaping odbywa się w build_html_context() przed
+	 * wywołaniem render() dla body lub jest pominięty dla subject (nagłówek plain-text).
 	 *
-	 * Klucze products_list, rating_links_list, coupon_code są poza zakresem
-	 * tego PR — silnik szablonów zastąpi je pustym ciągiem zgodnie ze swoim
-	 * kontraktem dla nieznanych kluczy.
+	 * Klucz coupon_code jest poza zakresem — silnik szablonów zastąpi go pustym
+	 * ciągiem zgodnie ze swoim kontraktem dla nieznanych kluczy.
 	 *
 	 * @param \WC_Order $order Zamówienie.
-	 * @return array<string,string> Kontekst dla silnika szablonów.
+	 * @return array<string,string> Kontekst surowy (bez HTML escaping).
 	 */
 	private function build_context( \WC_Order $order ): array {
 		$date_created = $order->get_date_created();
@@ -467,6 +464,33 @@ class Ihumbak_WRS_Email_Sender {
 			'order_date'          => $order_date,
 			'site_name'           => get_bloginfo( 'name' ),
 			'site_url'            => home_url(),
+		);
+	}
+
+	/**
+	 * Buduje kontekst HTML dla render() treści wiadomości.
+	 *
+	 * Skalarne wartości z build_context() są escapowane przez esc_html()/esc_url().
+	 * Wartości products_list i rating_links_list są już bezpiecznym HTML wygenerowanym
+	 * przez Ihumbak_WRS_Email_Product_List — NIE należy ich owijać w esc_html().
+	 *
+	 * @param \WC_Order                 $order Zamówienie.
+	 * @param \WC_Order_Item_Product[]  $items Przefiltrowane pozycje zamówienia.
+	 * @return array<string,string> Kontekst gotowy do przekazania do silnika szablonów.
+	 */
+	private function build_html_context( \WC_Order $order, array $items ): array {
+		$context = $this->build_context( $order );
+
+		return array(
+			'customer_name'       => esc_html( $context['customer_name'] ),
+			'customer_first_name' => esc_html( $context['customer_first_name'] ),
+			'customer_last_name'  => esc_html( $context['customer_last_name'] ),
+			'order_number'        => esc_html( $context['order_number'] ),
+			'order_date'          => esc_html( $context['order_date'] ),
+			'site_name'           => esc_html( $context['site_name'] ),
+			'site_url'            => esc_url( $context['site_url'] ),
+			'products_list'       => Ihumbak_WRS_Email_Product_List::render_products_list( $items ),
+			'rating_links_list'   => Ihumbak_WRS_Email_Product_List::render_rating_links_list( $items ),
 		);
 	}
 
