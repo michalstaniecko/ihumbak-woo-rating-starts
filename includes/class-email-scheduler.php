@@ -34,8 +34,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * - build_args( int $order_id, int $step ): array
  *   Jedyne dozwolone miejsce konstruowania tablicy argumentów dla AS.
- *   Klucz `order_id` MUSI być zachowany we wszystkich krokach (issue #9),
- *   ponieważ cancel_pending_for_order() filtruje wyłącznie po tym kluczu.
+ *   Każdy nowy krok sekwencji wysyłki musi zostać dopisany do stałej STEPS,
+ *   aby cancel_pending_for_order() mógł go odwołać (issue #9).
  */
 class Ihumbak_WRS_Email_Scheduler {
 
@@ -53,6 +53,16 @@ class Ihumbak_WRS_Email_Scheduler {
      * Numer pierwszego kroku sekwencji wysyłki.
      */
     const STEP_INITIAL = 0;
+
+    /**
+     * Wszystkie znane kroki sekwencji wysyłki.
+     *
+     * Action Scheduler dopasowuje argumenty zadań dokładnie po pełnej tablicy
+     * (domyślnie `partial_args_matching = 'off'`), więc cancel_pending_for_order()
+     * musi odwołać każdy krok osobno z pełnymi argami z build_args(). Dopisanie
+     * nowego kroku w issue #9 wymaga dodania go tutaj.
+     */
+    const STEPS = array( self::STEP_INITIAL );
 
     /**
      * Konstruktor — rejestruje hooki.
@@ -129,18 +139,21 @@ class Ihumbak_WRS_Email_Scheduler {
     /**
      * Odwołuje wszystkie oczekujące zadania AS dla danego zamówienia.
      *
-     * Dopasowanie po samym `order_id` celowo obejmuje wszystkie kroki —
-     * jest to zamierzone zachowanie: przy zwrocie/anulowaniu nie chcemy
-     * wysyłać żadnego e-maila, niezależnie od tego, który krok jest zaplanowany.
+     * Action Scheduler porównuje argumenty zadania dokładnie po pełnej
+     * tablicy (JSON), więc każdy krok z STEPS musi zostać odwołany osobno
+     * z argami zbudowanymi przez build_args(). Dzięki temu inwariancja
+     * "build_args() to jedyne miejsce konstrukcji argów" jest zachowana.
      *
      * @param int $order_id ID zamówienia.
      */
     public function cancel_pending_for_order( int $order_id ): void {
-        as_unschedule_all_actions(
-            self::SEND_ACTION_HOOK,
-            array( 'order_id' => $order_id ),
-            self::AS_GROUP
-        );
+        foreach ( self::STEPS as $step ) {
+            as_unschedule_all_actions(
+                self::SEND_ACTION_HOOK,
+                self::build_args( $order_id, $step ),
+                self::AS_GROUP
+            );
+        }
     }
 
     /**
