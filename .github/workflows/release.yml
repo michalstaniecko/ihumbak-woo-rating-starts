@@ -44,7 +44,7 @@ jobs:
           # Check Version header in plugin file
           PLUGIN_HEADER_VERSION=$(grep -E "^\s*\*\s*Version:" ihumbak-woo-rating-stars.php | sed 's/.*Version:\s*//' | tr -d '[:space:]')
           if [[ "$PLUGIN_HEADER_VERSION" != "$VERSION" ]]; then
-            echo "Warning: Plugin header version mismatch - expected '${VERSION}', found '${PLUGIN_HEADER_VERSION}'"
+            echo "Error: Plugin header version mismatch - expected '${VERSION}', found '${PLUGIN_HEADER_VERSION}'"
             ERRORS=$((ERRORS + 1))
           else
             echo "Plugin header version matches: ${PLUGIN_HEADER_VERSION}"
@@ -53,7 +53,7 @@ jobs:
           # Check IHUMBAK_WRS_VERSION constant
           CONSTANT_VERSION=$(grep "IHUMBAK_WRS_VERSION" ihumbak-woo-rating-stars.php | sed "s/.*'\([^']*\)'.*/\1/" | head -1)
           if [[ "$CONSTANT_VERSION" != "$VERSION" ]]; then
-            echo "Warning: IHUMBAK_WRS_VERSION mismatch - expected '${VERSION}', found '${CONSTANT_VERSION}'"
+            echo "Error: IHUMBAK_WRS_VERSION mismatch - expected '${VERSION}', found '${CONSTANT_VERSION}'"
             ERRORS=$((ERRORS + 1))
           else
             echo "IHUMBAK_WRS_VERSION matches: ${CONSTANT_VERSION}"
@@ -61,8 +61,9 @@ jobs:
 
           if [[ $ERRORS -gt 0 ]]; then
             echo ""
-            echo "Warning: ${ERRORS} version mismatch(es) found. Proceeding with build anyway."
-            echo "Please update version numbers before the next release."
+            echo "Error: ${ERRORS} version mismatch(es) found. Aborting release."
+            echo "Please update version numbers before tagging."
+            exit 1
           fi
 
       - name: Setup PHP
