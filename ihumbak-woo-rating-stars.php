@@ -124,6 +124,7 @@ final class Ihumbak_WooCommerce_Rating_Stars {
         if (is_admin()) {
             new Ihumbak_WRS_Admin_Panel();
             new Ihumbak_WRS_Admin_Settings();
+            new Ihumbak_WRS_Admin_Email_Settings();
         }
 
         // Frontend

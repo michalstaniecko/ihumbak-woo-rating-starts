@@ -25,6 +25,20 @@ delete_option('ihumbak_wrs_text_rate');
 delete_option('ihumbak_wrs_text_thanks');
 delete_option('ihumbak_wrs_db_version');
 
+// Delete email settings options (issue #3)
+delete_option('ihumbak_wrs_email_enabled');
+delete_option('ihumbak_wrs_email_trigger_status');
+delete_option('ihumbak_wrs_email_delay_days');
+delete_option('ihumbak_wrs_email_skip_refunded');
+delete_option('ihumbak_wrs_email_skip_already_rated');
+delete_option('ihumbak_wrs_email_excluded_products');
+delete_option('ihumbak_wrs_email_excluded_categories');
+delete_option('ihumbak_wrs_email_subject');
+delete_option('ihumbak_wrs_email_body');
+delete_option('ihumbak_wrs_email_from_name');
+delete_option('ihumbak_wrs_email_from_email');
+delete_option('ihumbak_wrs_email_reply_to');
+
 // Delete transients
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ihumbak_wrs_%'");
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_ihumbak_wrs_%'");
