@@ -49,13 +49,13 @@ $known = Ihumbak_WRS_Email_Template::get_known_placeholders();
 $context_all = array(
     'customer_name'       => 'Jan Łukasz Żółć',
     'customer_first_name' => 'Jan',
-    'order_id'            => '12345',
+    'order_number'        => '12345',
     'order_date'          => '2026-05-15',
     'site_name'           => 'Sklep Testowy',
     'site_url'            => 'https://example.com',
 );
 
-$template_all = '{customer_name} {customer_first_name} {order_id} {order_date} {site_name} {site_url}';
+$template_all = '{customer_name} {customer_first_name} {order_number} {order_date} {site_name} {site_url}';
 $out_all = Ihumbak_WRS_Email_Template::render($template_all, $context_all);
 
 foreach ($known as $key) {
@@ -77,7 +77,7 @@ assert_false(strpos($out2, '{foo}') !== false, 'Unknown placeholder does not lea
 // ---------------------------------------------------------------------------
 // 3. Brakujący klucz w kontekście renderuje pusty ciąg.
 // ---------------------------------------------------------------------------
-$out3 = Ihumbak_WRS_Email_Template::render('Order {order_id}.', array());
+$out3 = Ihumbak_WRS_Email_Template::render('Order {order_number}.', array());
 assert_eq('Order .', $out3, 'Missing context key renders empty');
 
 // ---------------------------------------------------------------------------
