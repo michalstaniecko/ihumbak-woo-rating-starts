@@ -185,6 +185,19 @@
         $('.ihumbak-wrs-widget').each(function() {
             new RatingWidget(this);
         });
+
+        // Deep-link: gdy URL zawiera #ihumbak-wrs-rate, przewiń stronę
+        // do widgetu i zastosuj krótkie podświetlenie.
+        if (window.location.hash === '#ihumbak-wrs-rate') {
+            var $target = $('#ihumbak-wrs-rate');
+            if ($target.length) {
+                $target[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                $target.addClass('ihumbak-wrs-deep-link-highlight');
+                setTimeout(function() {
+                    $target.removeClass('ihumbak-wrs-deep-link-highlight');
+                }, 3000);
+            }
+        }
     });
-    
+
 })(jQuery);

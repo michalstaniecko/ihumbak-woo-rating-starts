@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- New class `Ihumbak_WRS_Email_Product_List` (`includes/class-email-product-list.php`) implementing `{products_list}` and `{rating_links_list}` email template placeholders (issue #7).
+- `{products_list}` renders an HTML `<ul>` of purchased products with links to their product pages.
+- `{rating_links_list}` renders an HTML `<ul>` of purchased products with deep-link URLs pointing directly to the rating widget anchor (`#ihumbak-wrs-rate`).
+- Rating widget (`templates/widget-stars.php`) now carries `id="ihumbak-wrs-rate"` and `tabindex="-1"` on its root element, making it a stable deep-link target.
+- JavaScript (`assets/js/rating-widget.js`): when a page is loaded with `#ihumbak-wrs-rate` in the URL, the widget is smooth-scrolled into view and briefly highlighted.
+- CSS (`assets/css/rating-widget.css`): new `@keyframes ihumbak-wrs-deep-link-pulse` animation and `.ihumbak-wrs-widget.ihumbak-wrs-deep-link-highlight` rule for the arrival highlight effect.
+
+### Changed
+- `Ihumbak_WRS_Email_Sender::process()` now uses the new `build_html_context()` method for HTML body rendering; subject rendering substitutes empty strings for `products_list` and `rating_links_list` to prevent raw HTML leaking into the mail subject line.
+- `Ihumbak_WRS_Email_Template::KNOWN_PLACEHOLDERS` updated to include `products_list` and `rating_links_list`.
+- Admin settings UI (`admin/class-admin-email-settings.php`): disclaimer updated to reflect that `{products_list}` and `{rating_links_list}` are now fully implemented; only `{coupon_code}` remains pending.
+
 ## [1.1.1] - 2026-04-03
 
 ## [1.1.0] - 2026-04-03

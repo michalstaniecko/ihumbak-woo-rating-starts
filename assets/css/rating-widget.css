@@ -135,3 +135,21 @@
 .ihumbak-wrs-stars .star.active {
     animation: ihumbak-wrs-pulse 0.3s ease;
 }
+
+/* Deep-link highlight — wywoływane przez JS gdy URL zawiera #ihumbak-wrs-rate.
+   Wzmocniony pulse: 3 cykle, mocniejszy tint, wyraźna obwódka. */
+@keyframes ihumbak-wrs-deep-link-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+        background-color: transparent;
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(255, 193, 7, 0.85), 0 0 24px 4px rgba(255, 193, 7, 0.45);
+        background-color: #fff3cd;
+    }
+}
+
+.ihumbak-wrs-widget.ihumbak-wrs-deep-link-highlight {
+    animation: ihumbak-wrs-deep-link-pulse 1s ease-in-out 3;
+    border-radius: 6px;
+}

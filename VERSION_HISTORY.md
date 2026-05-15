@@ -1,5 +1,36 @@
 # Historia Wersji - WooCommerce Quick Ratings & Reviews
 
+## [Unreleased] — issue #7: Rating deep links
+
+### Dodane
+- Klasa `Ihumbak_WRS_Email_Product_List` (`includes/class-email-product-list.php`):
+  wdraża placeholdery `{products_list}` (lista linków do stron produktów)
+  i `{rating_links_list}` (lista linków z kotwicą `#ihumbak-wrs-rate`).
+- Widget (`templates/widget-stars.php`): dodano `id="ihumbak-wrs-rate"` i `tabindex="-1"`
+  do korzenia widgetu jako stabilna kotwica deep-link.
+- JS (`assets/js/rating-widget.js`): obsługa `window.location.hash === '#ihumbak-wrs-rate'` —
+  płynne przewinięcie do widgetu i 2-sekundowe podświetlenie przy wejściu z linku z emaila.
+- CSS (`assets/css/rating-widget.css`): animacja `ihumbak-wrs-deep-link-pulse` i klasa
+  `.ihumbak-wrs-widget.ihumbak-wrs-deep-link-highlight`.
+
+### Zmienione
+- `Ihumbak_WRS_Email_Sender`: nowa metoda `build_html_context()` zastępuje inline
+  blok escapowania w `process()`; kontekst tematu podstawia puste ciągi dla obu nowych kluczy.
+- `Ihumbak_WRS_Email_Template::KNOWN_PLACEHOLDERS`: dodano `products_list` i `rating_links_list`.
+- Admin UI (`admin/class-admin-email-settings.php`): zaktualizowano disclaimer w sekcji
+  treści emaila — informuje, że oba placeholdery działają; `{coupon_code}` nadal oczekuje.
+
+**Zmienione pliki:**
+- `includes/class-email-product-list.php` (nowy)
+- `includes/class-email-sender.php`
+- `includes/class-email-template.php`
+- `templates/widget-stars.php`
+- `assets/js/rating-widget.js`
+- `assets/css/rating-widget.css`
+- `admin/class-admin-email-settings.php`
+
+---
+
 ## v1.0.3 (2025-11-18) - CURRENT
 **Status:** ✅ Stabilna
 

@@ -8,7 +8,16 @@ if (!defined('ABSPATH')) {
 }
 ?>
 
-<div class="ihumbak-wrs-widget" data-product-id="<?php echo esc_attr($product_id); ?>" 
+<?php
+// id="ihumbak-wrs-rate" jest stabilną kotwicą deep-link z issue #7.
+// Zakłada się, że na stronie pojedynczego produktu renderowany jest dokładnie
+// jeden widget (jedyna instancja Ihumbak_WRS_Frontend_Render::render_widget()).
+// tabindex="-1" umożliwia programatyczne przeniesienie focusu przez scrollIntoView().
+?>
+<div id="ihumbak-wrs-rate"
+     class="ihumbak-wrs-widget"
+     data-product-id="<?php echo esc_attr($product_id); ?>"
+     tabindex="-1"
      <?php if ($stats['total_count'] > 0): ?>
      itemscope itemtype="https://schema.org/AggregateRating" itemprop="aggregateRating"
      <?php endif; ?>>
