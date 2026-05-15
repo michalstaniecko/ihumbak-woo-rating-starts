@@ -17,6 +17,19 @@ BUILD_DIR="/tmp/${PLUGIN_SLUG}-build"
 
 echo "Building ${ZIP_NAME}..."
 
+# Install production Composer dependencies so vendor/ ships in the release ZIP.
+if [ -f composer.json ]; then
+    if ! command -v composer >/dev/null 2>&1; then
+        echo "Error: composer.json is present but the 'composer' command is not available."
+        exit 1
+    fi
+    echo "Installing Composer production dependencies..."
+    composer install --no-dev --optimize-autoloader --no-interaction --quiet || {
+        echo "Error: composer install failed"
+        exit 1
+    }
+fi
+
 # Clean previous build
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/${PLUGIN_SLUG}"
@@ -31,6 +44,11 @@ cp -r database "$BUILD_DIR/${PLUGIN_SLUG}/"
 cp -r includes "$BUILD_DIR/${PLUGIN_SLUG}/"
 cp -r public "$BUILD_DIR/${PLUGIN_SLUG}/"
 cp -r templates "$BUILD_DIR/${PLUGIN_SLUG}/"
+
+# Vendor dependencies (required for plugin-update-checker at runtime)
+[ -d vendor ] && cp -r vendor "$BUILD_DIR/${PLUGIN_SLUG}/"
+[ -f composer.json ] && cp composer.json "$BUILD_DIR/${PLUGIN_SLUG}/"
+[ -f composer.lock ] && cp composer.lock "$BUILD_DIR/${PLUGIN_SLUG}/"
 
 # Copy optional files if they exist
 [ -f README.md ] && cp README.md "$BUILD_DIR/${PLUGIN_SLUG}/"

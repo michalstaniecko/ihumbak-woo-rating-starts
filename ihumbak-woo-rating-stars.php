@@ -27,6 +27,11 @@ define('IHUMBAK_WRS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('IHUMBAK_WRS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('IHUMBAK_WRS_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
+// Composer autoloader (third-party dependencies)
+if (file_exists(IHUMBAK_WRS_PLUGIN_DIR . 'vendor/autoload.php')) {
+    require_once IHUMBAK_WRS_PLUGIN_DIR . 'vendor/autoload.php';
+}
+
 // Autoloader
 require_once IHUMBAK_WRS_PLUGIN_DIR . 'includes/class-autoloader.php';
 
@@ -46,7 +51,19 @@ final class Ihumbak_WooCommerce_Rating_Stars {
 
     private function __construct() {
 				add_action('before_woocommerce_init', array($this, 'declare_compatibility'));
+        $this->init_update_service();
         $this->init_hooks();
+    }
+
+    private function init_update_service() {
+        if (!class_exists('Ihumbak_WRS_Update_Service')) {
+            return;
+        }
+
+        $update_service = new Ihumbak_WRS_Update_Service();
+        if ($update_service->is_enabled()) {
+            $update_service->init();
+        }
     }
 
 		public function declare_compatibility() {
