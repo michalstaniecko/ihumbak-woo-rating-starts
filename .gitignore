@@ -21,6 +21,7 @@ vendor/
 # Build
 /dist/
 /build/
+*.zip
 
 # Temporary
 *.tmp
