@@ -41,9 +41,10 @@ class Ihumbak_WRS_Email_Sender {
 
 	/**
 	 * Liczba argumentów przyjmowanych przez handler hooka.
-	 * Action Scheduler przekazuje pojedynczą tablicę args z build_args().
+	 * Action Scheduler rozpakowuje tablicę z build_args() pozycyjnie
+	 * (do_action_ref_array), więc callback otrzymuje (int $order_id, int $step).
 	 */
-	const ACCEPTED_ARGS = 1;
+	const ACCEPTED_ARGS = 2;
 
 	/**
 	 * Konstruktor — rejestruje hook i utrzymuje logikę wiring testowalną.
@@ -66,22 +67,30 @@ class Ihumbak_WRS_Email_Sender {
 	/**
 	 * Główny handler wywoływany przez Action Scheduler.
 	 *
+	 * AS przekazuje wartości z build_args() pozycyjnie — odbieramy je jako
+	 * dwa skalarne argumenty zamiast pojedynczej tablicy.
+	 *
 	 * Wykonuje pełny potok walidacji i reguł pomijania, buduje kontekst,
 	 * renderuje wiadomość i wywołuje dispatch(). Wszystkie wyjątki są przechwytywane.
 	 *
-	 * @param array $args Tablica argumentów w formacie Ihumbak_WRS_Email_Scheduler::build_args().
+	 * @param int $order_id ID zamówienia.
+	 * @param int $step     Numer kroku sekwencji (0 = wiadomość początkowa).
 	 */
-	public function handle_send( array $args ): void {
+	public function handle_send( $order_id = 0, $step = 0 ): void {
+		$order_id = (int) $order_id;
+		$step     = (int) $step;
+
 		try {
-			$this->process( $args );
+			$this->process( $order_id, $step );
 		} catch ( \Throwable $e ) {
 			$this->log_failure(
 				'Nieoczekiwany wyjątek w handle_send',
 				array(
-					'args'  => $args,
-					'error' => $e->getMessage(),
-					'file'  => $e->getFile(),
-					'line'  => $e->getLine(),
+					'order_id' => $order_id,
+					'step'     => $step,
+					'error'    => $e->getMessage(),
+					'file'     => $e->getFile(),
+					'line'     => $e->getLine(),
 				)
 			);
 		}
@@ -94,20 +103,14 @@ class Ihumbak_WRS_Email_Sender {
 	/**
 	 * Właściwy potok — walidacja, reguły pomijania, render, dispatch.
 	 *
-	 * @param array $args Tablica argumentów z AS.
+	 * @param int $order_id ID zamówienia przekazane przez AS.
+	 * @param int $step     Numer kroku sekwencji.
 	 */
-	private function process( array $args ): void {
+	private function process( int $order_id, int $step ): void {
 
 		// Krok 1 — Walidacja argumentów.
-		if ( ! isset( $args['order_id'], $args['step'] ) ) {
-			$this->log_failure( 'Nieprawidłowa struktura args — brakuje order_id lub step', $args );
-			return;
-		}
-
-		$order_id = (int) $args['order_id'];
-
 		if ( $order_id <= 0 ) {
-			$this->log_failure( 'Nieprawidłowe order_id w args', $args );
+			$this->log_failure( 'Nieprawidłowe order_id', array( 'order_id' => $order_id, 'step' => $step ) );
 			return;
 		}
 
