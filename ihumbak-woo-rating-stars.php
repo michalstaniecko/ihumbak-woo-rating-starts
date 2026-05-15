@@ -117,6 +117,10 @@ final class Ihumbak_WooCommerce_Rating_Stars {
         new Ihumbak_WRS_REST_API_Handler();
         new Ihumbak_WRS_WooCommerce_Integration();
 
+        // Scheduler ładujemy zawsze, bo status zamówienia może zmienić się
+        // w kontekście admin/REST/cron — nie tylko na froncie sklepu.
+        new Ihumbak_WRS_Email_Scheduler();
+
         // SEO & Schema.org
         new Ihumbak_WRS_Schema_Markup();
 
