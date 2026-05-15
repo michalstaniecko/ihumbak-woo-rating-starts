@@ -1,0 +1,14 @@
+{
+    "name": "ihumbak/woo-rating-stars",
+    "description": "WooCommerce Quick Ratings & Reviews plugin dependencies.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=7.4",
+        "yahnis-elsts/plugin-update-checker": "^5.6"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}
