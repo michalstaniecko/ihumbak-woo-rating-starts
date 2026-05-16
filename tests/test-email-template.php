@@ -147,6 +147,38 @@ $out10 = Ihumbak_WRS_Email_Template::render('Hi {customer_name}.', array('custom
 assert_eq('Hi .', $out10, 'Array context value renders empty (defensive)');
 
 // ---------------------------------------------------------------------------
+// 11. to_plain_text() poprawnie obsługuje zawinięty HTML szablonu WC.
+//     Weryfikuje, że wynik nie zawiera HTML, zawiera nagłówek i treść,
+//     oraz zachowuje znaki nowej linii jako separator akapitów.
+// ---------------------------------------------------------------------------
+$wrapped_html11 = '<table id="wrapper"><tr><td><h1>Tytuł wiadomości</h1><p>Treść wiadomości.</p></td></tr></table>';
+$out11          = Ihumbak_WRS_Email_Template::to_plain_text( $wrapped_html11 );
+
+assert_false( strpos( $out11, '<' ) !== false,  'to_plain_text (wrapped): brak < w wyjściu' );
+assert_false( strpos( $out11, '>' ) !== false,  'to_plain_text (wrapped): brak > w wyjściu' );
+assert_true(  strpos( $out11, 'Tytuł wiadomości' ) !== false, 'to_plain_text (wrapped): zawiera nagłówek H1' );
+assert_true(  strpos( $out11, 'Treść wiadomości.' ) !== false, 'to_plain_text (wrapped): zawiera treść akapitu' );
+assert_true(  strpos( $out11, "\n" ) !== false,  'to_plain_text (wrapped): zachowuje znaki nowej linii' );
+
+// ---------------------------------------------------------------------------
+// 12. Nagłówek jako placeholder — renderuje się zgodnie z kontekstem.
+//     Upewnia się, że nagłówek z tokenami (np. {customer_first_name})
+//     działa przez ten sam silnik co temat.
+// ---------------------------------------------------------------------------
+$heading_tpl12  = 'Drogi {customer_first_name}, oceniasz w sklepie {site_name}';
+$heading_ctx12  = array(
+    'customer_first_name' => 'Anna',
+    'site_name'           => 'Sklep Demo',
+    'products_list'       => '',
+    'rating_links_list'   => '',
+);
+$out12 = Ihumbak_WRS_Email_Template::render( $heading_tpl12, $heading_ctx12 );
+
+assert_true(  strpos( $out12, 'Anna' ) !== false,       'Heading placeholder: {customer_first_name} podstawiony' );
+assert_true(  strpos( $out12, 'Sklep Demo' ) !== false,  'Heading placeholder: {site_name} podstawiony' );
+assert_false( strpos( $out12, '{' ) !== false,           'Heading placeholder: brak nierozwiązanych tokenów' );
+
+// ---------------------------------------------------------------------------
 // Wszystkie asercje przeszły.
 // ---------------------------------------------------------------------------
 echo "OK: {$ran} assertions passed.\n";

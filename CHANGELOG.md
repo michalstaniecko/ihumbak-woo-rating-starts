@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added (issue #21 — WooCommerce email template wrap)
+- Nowa opcja `ihumbak_wrs_email_heading` (typ string, domyślnie pusty ciąg) — konfigurowalny nagłówek wewnętrzny wiadomości e-mail wyświetlany jako `<h1>` wewnątrz szablonu WooCommerce. Obsługuje placeholder-y skalarne (identyczne jak temat). Gdy puste — stosowana jest domyślna wartość „Twoja opinia jest dla nas ważna".
+- Prywatna metoda `Ihumbak_WRS_Email_Sender::wrap_with_wc_template( string $body_html, string $heading ): string` owijająca wyrenderowaną treść wiadomości w domyślny szablon transakcyjny WooCommerce. Preferuje `WC_Emails::apply_transactional_email_template()` (WC 3.7+), fallback do `style_inline( wrap_message() )`, ostatni fallback do samego `wrap_message()`. Chroniona przed wyjątkami (try/catch Throwable). Gdy WC jest niedostępne — zwraca niezmienione `$body_html`.
+- Prywatna metoda `Ihumbak_WRS_Email_Sender::default_heading(): string` zwracająca przetłumaczony domyślny nagłówek.
+- Pole „Nagłówek wiadomości / Email heading" w sekcji „Treść wiadomości" panelu ustawień e-mail, umieszczone między Subject a Body.
+- Cleanup w `uninstall.php`: usuwanie opcji `ihumbak_wrs_email_heading` przy deinstalacji pluginu.
+- Testy CLI w `tests/test-email-template.php`: sekcja 11 (to_plain_text z owiniętem HTML WC) i sekcja 12 (placeholder-y w nagłówku).
+
+### Changed (issue #21)
+- `Ihumbak_WRS_Email_Sender::process()` i `send_test()` renderują teraz nagłówek z opcji `ihumbak_wrs_email_heading` (lub wartości domyślnej) i przekazują go do `wrap_with_wc_template()` przed `dispatch_raw()`.
+- Wersja: `1.2.0` → `1.2.1`.
+
+---
+
 ### Added
 - Opcja `ihumbak_wrs_email_followups` umozliwiajaca konfiguracje 0-3 przypomnien (follow-up) po wysylce poczatkowej. Kazde przypomnienie ma wlasne opoznienie (dni) i niezaleznie respektuje reguly pomijania (#9).
 - Nowa klasa `Ihumbak_WRS_Email_Followup_Scheduler` nasluchujaca `ihumbak_wrs_email_send_complete` i planujaca kolejny krok przez Action Scheduler (#9).

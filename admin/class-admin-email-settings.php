@@ -145,6 +145,16 @@ class Ihumbak_WRS_Admin_Email_Settings {
 
         register_setting(
             self::OPTION_GROUP,
+            'ihumbak_wrs_email_heading',
+            array(
+                'type'              => 'string',
+                'default'           => '',
+                'sanitize_callback' => 'sanitize_text_field',
+            )
+        );
+
+        register_setting(
+            self::OPTION_GROUP,
             'ihumbak_wrs_email_body',
             array(
                 'type'              => 'string',
@@ -294,6 +304,15 @@ class Ihumbak_WRS_Admin_Email_Settings {
             self::PAGE_SLUG,
             'ihumbak_wrs_email_content',
             array( 'label_for' => 'ihumbak_wrs_email_subject' )
+        );
+
+        add_settings_field(
+            'ihumbak_wrs_email_heading',
+            __( 'Nagłówek wiadomości / Email heading', 'ihumbak-woo-rating-stars' ),
+            array( $this, 'render_heading' ),
+            self::PAGE_SLUG,
+            'ihumbak_wrs_email_content',
+            array( 'label_for' => 'ihumbak_wrs_email_heading' )
         );
 
         add_settings_field(
@@ -746,6 +765,38 @@ class Ihumbak_WRS_Admin_Email_Settings {
                value="<?php echo esc_attr( $value ); ?>" class="large-text" />
         <p class="description">
             <?php esc_html_e( 'Temat wiadomości. Możesz użyć dostępnych placeholderów.', 'ihumbak-woo-rating-stars' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Renderuje pole nagłówka wiadomości e-mail.
+     *
+     * Nagłówek jest wyświetlany jako <h1> na górze wiadomości opakowanej
+     * w szablon WooCommerce. Obsługuje te same placeholder-y co temat
+     * (skalarne — bez {products_list} i {rating_links_list}).
+     * Gdy pole jest puste, stosowany jest domyślny nagłówek zdefiniowany
+     * w Ihumbak_WRS_Email_Sender::default_heading().
+     */
+    public function render_heading() {
+        $value   = (string) get_option( 'ihumbak_wrs_email_heading', '' );
+        $default = __( 'Twoja opinia jest dla nas ważna', 'ihumbak-woo-rating-stars' );
+        ?>
+        <input type="text" id="ihumbak_wrs_email_heading" name="ihumbak_wrs_email_heading"
+               value="<?php echo esc_attr( $value ); ?>" class="large-text"
+               placeholder="<?php echo esc_attr( $default ); ?>" />
+        <p class="description">
+            <?php
+            esc_html_e(
+                'Nagłówek widoczny wewnątrz wiadomości (wyświetlany jako H1 w szablonie WooCommerce). '
+                . 'Pozostaw puste, aby użyć domyślnej wartości. '
+                . 'Obsługuje placeholder-y skalarne (np. {customer_first_name}, {site_name}) — '
+                . 'nie wstawiaj tu {products_list} ani {rating_links_list}. '
+                . '/ Email heading displayed as H1 at the top of the WooCommerce-wrapped message. '
+                . 'Leave empty for the default. Supports scalar placeholders.',
+                'ihumbak-woo-rating-stars'
+            );
+            ?>
         </p>
         <?php
     }
