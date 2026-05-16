@@ -8,7 +8,8 @@
  * komunikat gotowy do wyświetlenia adminowi.
  *
  * Klasa jest finalna — wartości tworzone wyłącznie przez named constructors.
- * Właściwości są typowane (PHP 7.4+).
+ * Właściwości są prywatne i dostępne wyłącznie przez gettery — egzekwowana
+ * niezmienność (PHP 7.4 nie ma natywnych `readonly` properties).
  *
  * @package Ihumbak_WooCommerce_Rating_Stars
  * @since   1.4.0
@@ -54,6 +55,9 @@ final class Ihumbak_WRS_Email_Send_Result {
 	/** Zamówienie nie ma prawidłowego adresu e-mail rozliczeniowego. */
 	const REASON_INVALID_EMAIL     = 'invalid_email';
 
+	/** Zamówienie nie zawiera żadnych pozycji do oceny (pusta lista line_item). */
+	const REASON_NO_ITEMS          = 'no_items_in_order';
+
 	/** Wszystkie produkty zostały wykluczone przez ustawienia. */
 	const REASON_ALL_EXCLUDED      = 'all_items_excluded';
 
@@ -70,7 +74,7 @@ final class Ihumbak_WRS_Email_Send_Result {
 	const REASON_EXCEPTION         = 'exception';
 
 	// -------------------------------------------------------------------------
-	// Właściwości
+	// Właściwości (private — dostęp wyłącznie przez gettery)
 	// -------------------------------------------------------------------------
 
 	/**
@@ -78,7 +82,7 @@ final class Ihumbak_WRS_Email_Send_Result {
 	 *
 	 * @var string
 	 */
-	public string $status;
+	private string $status;
 
 	/**
 	 * Przyczyna pominięcia / błędu (jedna ze stałych REASON_*).
@@ -86,14 +90,14 @@ final class Ihumbak_WRS_Email_Send_Result {
 	 *
 	 * @var string
 	 */
-	public string $reason;
+	private string $reason;
 
 	/**
 	 * Przetłumaczony komunikat gotowy do wyświetlenia adminowi.
 	 *
 	 * @var string
 	 */
-	public string $message;
+	private string $message;
 
 	/**
 	 * Czy wynik pochodzi z wysyłki testowej.
@@ -101,7 +105,7 @@ final class Ihumbak_WRS_Email_Send_Result {
 	 *
 	 * @var bool
 	 */
-	public bool $is_test;
+	private bool $is_test;
 
 	// -------------------------------------------------------------------------
 	// Konstruktor prywatny — używaj named constructors
@@ -158,5 +162,45 @@ final class Ihumbak_WRS_Email_Send_Result {
 	 */
 	public static function failed( string $reason, string $message, bool $is_test = false ): self {
 		return new self( self::STATUS_FAILED, $reason, $message, $is_test );
+	}
+
+	// -------------------------------------------------------------------------
+	// Gettery
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Zwraca status wyniku.
+	 *
+	 * @return string Jedna ze stałych STATUS_*.
+	 */
+	public function get_status(): string {
+		return $this->status;
+	}
+
+	/**
+	 * Zwraca przyczynę pominięcia lub błędu.
+	 *
+	 * @return string Jedna ze stałych REASON_* lub pusty ciąg (gdy STATUS_SENT).
+	 */
+	public function get_reason(): string {
+		return $this->reason;
+	}
+
+	/**
+	 * Zwraca przetłumaczony komunikat gotowy do wyświetlenia.
+	 *
+	 * @return string Komunikat dla admina.
+	 */
+	public function get_message(): string {
+		return $this->message;
+	}
+
+	/**
+	 * Sprawdza, czy wynik pochodzi z wysyłki testowej.
+	 *
+	 * @return bool True jeśli wynik dotyczy testowej wysyłki (send_test).
+	 */
+	public function is_test(): bool {
+		return $this->is_test;
 	}
 }

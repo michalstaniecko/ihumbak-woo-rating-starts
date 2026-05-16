@@ -198,7 +198,7 @@ class Ihumbak_WRS_Admin_Email_Tools {
 		$result = $sender->send_test( $recipient, $sample_order_id );
 
 		// Zapisanie powiadomienia z wynikiem.
-		if ( Ihumbak_WRS_Email_Send_Result::STATUS_SENT === $result->status ) {
+		if ( Ihumbak_WRS_Email_Send_Result::STATUS_SENT === $result->get_status() ) {
 			$this->store_notice(
 				'success',
 				sprintf(
@@ -208,10 +208,10 @@ class Ihumbak_WRS_Admin_Email_Tools {
 				)
 			);
 		} else {
-			$notice_type = Ihumbak_WRS_Email_Send_Result::STATUS_SKIPPED === $result->status ? 'warning' : 'error';
+			$notice_type = Ihumbak_WRS_Email_Send_Result::STATUS_SKIPPED === $result->get_status() ? 'warning' : 'error';
 			$this->store_notice(
 				$notice_type,
-				$result->message
+				$result->get_message()
 					?: __( 'Nie udało się wysłać testowej wiadomości e-mail.', 'ihumbak-woo-rating-stars' )
 			);
 		}
@@ -368,7 +368,7 @@ class Ihumbak_WRS_Admin_Email_Tools {
 	 * @param \WC_Order                    $order  Zamówienie (używane do komunikatu sukcesu).
 	 */
 	private function store_notice_for_result( Ihumbak_WRS_Email_Send_Result $result, \WC_Order $order ): void {
-		switch ( $result->status ) {
+		switch ( $result->get_status() ) {
 			case Ihumbak_WRS_Email_Send_Result::STATUS_SENT:
 				$this->store_notice(
 					'success',
@@ -383,7 +383,7 @@ class Ihumbak_WRS_Admin_Email_Tools {
 			case Ihumbak_WRS_Email_Send_Result::STATUS_SKIPPED:
 				$this->store_notice(
 					'warning',
-					$result->message
+					$result->get_message()
 						?: sprintf(
 							/* translators: %s: numer zamówienia */
 							__( 'E-mail dla zamówienia %s nie został wysłany (pominięto przez regułę).', 'ihumbak-woo-rating-stars' ),
@@ -396,7 +396,7 @@ class Ihumbak_WRS_Admin_Email_Tools {
 			default:
 				$this->store_notice(
 					'error',
-					$result->message
+					$result->get_message()
 						?: sprintf(
 							/* translators: %s: numer zamówienia */
 							__( 'Nie udało się wysłać e-maila dla zamówienia %s.', 'ihumbak-woo-rating-stars' ),
@@ -418,7 +418,7 @@ class Ihumbak_WRS_Admin_Email_Tools {
 	 * @return string Treść notatki.
 	 */
 	private function format_order_note( Ihumbak_WRS_Email_Send_Result $result, \WC_Order $order ): string {
-		switch ( $result->status ) {
+		switch ( $result->get_status() ) {
 			case Ihumbak_WRS_Email_Send_Result::STATUS_SENT:
 				return __( '[Quick Ratings] E-mail z prośbą o ocenę wysłany ręcznie przez administratora.', 'ihumbak-woo-rating-stars' );
 
@@ -426,7 +426,7 @@ class Ihumbak_WRS_Admin_Email_Tools {
 				return sprintf(
 					/* translators: %s: komunikat z powodem pominięcia */
 					__( '[Quick Ratings] Ręczna wysyłka pominięta. Powód: %s', 'ihumbak-woo-rating-stars' ),
-					$result->message ?: $result->reason
+					$result->get_message() ?: $result->get_reason()
 				);
 
 			case Ihumbak_WRS_Email_Send_Result::STATUS_FAILED:
@@ -434,7 +434,7 @@ class Ihumbak_WRS_Admin_Email_Tools {
 				return sprintf(
 					/* translators: %s: komunikat z opisem błędu */
 					__( '[Quick Ratings] Ręczna wysyłka nieudana. Błąd: %s', 'ihumbak-woo-rating-stars' ),
-					$result->message ?: $result->reason
+					$result->get_message() ?: $result->get_reason()
 				);
 		}
 	}

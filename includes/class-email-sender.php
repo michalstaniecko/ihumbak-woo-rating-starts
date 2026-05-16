@@ -82,8 +82,10 @@ class Ihumbak_WRS_Email_Sender {
 		$order_id = (int) $order_id;
 		$step     = (int) $step;
 
+		$result = null;
+
 		try {
-			$this->process( $order_id, $step );
+			$result = $this->process( $order_id, $step );
 		} catch ( \Throwable $e ) {
 			$this->log_failure(
 				'Nieoczekiwany wyjątek w handle_send',
@@ -95,7 +97,14 @@ class Ihumbak_WRS_Email_Sender {
 					'line'     => $e->getLine(),
 				)
 			);
+
+			$result = Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_EXCEPTION,
+				__( 'Wystąpił nieoczekiwany błąd podczas wysyłki.', 'ihumbak-woo-rating-stars' )
+			);
 		}
+
+		$this->fire_send_complete_hook( $result, $order_id, $step );
 	}
 
 	// -------------------------------------------------------------------------
@@ -116,7 +125,7 @@ class Ihumbak_WRS_Email_Sender {
 	 */
 	public function send_for_order( int $order_id, int $step = 0 ): Ihumbak_WRS_Email_Send_Result {
 		try {
-			return $this->process( $order_id, $step );
+			$result = $this->process( $order_id, $step );
 		} catch ( \Throwable $e ) {
 			$this->log_failure(
 				'Nieoczekiwany wyjątek w send_for_order',
@@ -129,11 +138,15 @@ class Ihumbak_WRS_Email_Sender {
 				)
 			);
 
-			return Ihumbak_WRS_Email_Send_Result::failed(
+			$result = Ihumbak_WRS_Email_Send_Result::failed(
 				Ihumbak_WRS_Email_Send_Result::REASON_EXCEPTION,
 				__( 'Wystąpił nieoczekiwany błąd podczas wysyłki.', 'ihumbak-woo-rating-stars' )
 			);
 		}
+
+		$this->fire_send_complete_hook( $result, $order_id, $step );
+
+		return $result;
 	}
 
 	/**
@@ -314,12 +327,15 @@ class Ihumbak_WRS_Email_Sender {
 		}
 
 		// Krok 5 — Zebranie pozycji zamówienia.
+		// Edge case: zamówienie bez line_item (np. tylko refundy lub same opłaty)
+		// raportujemy jako REASON_NO_ITEMS, nie REASON_ALL_EXCLUDED — przyczyna
+		// jest jakościowo inna (zamówienie nie ma czego oceniać).
 		$items = $order->get_items( 'line_item' );
 
 		if ( empty( $items ) ) {
 			return Ihumbak_WRS_Email_Send_Result::skipped(
-				Ihumbak_WRS_Email_Send_Result::REASON_ALL_EXCLUDED,
-				__( 'Wszystkie produkty z zamówienia są wykluczone z wysyłki.', 'ihumbak-woo-rating-stars' )
+				Ihumbak_WRS_Email_Send_Result::REASON_NO_ITEMS,
+				__( 'Zamówienie nie zawiera żadnych pozycji do oceny.', 'ihumbak-woo-rating-stars' )
 			);
 		}
 
@@ -774,7 +790,43 @@ class Ihumbak_WRS_Email_Sender {
 			remove_filter( 'wp_mail_content_type', $filter_cb );
 		}
 
+		// Diagnostyka — gdy wp_mail zwróci false (regresja przywrócona po #6).
+		// Logowanie jest debug-only (gated WP_DEBUG + WP_DEBUG_LOG), nie narusza
+		// kontraktu test-send „brak persistencji" — error_log nie zapisuje stanu w DB.
+		if ( ! $sent ) {
+			$this->log_failure(
+				'wp_mail zwrócił false',
+				array(
+					'to'      => $to,
+					'subject' => $subject,
+				)
+			);
+		}
+
 		return $sent;
+	}
+
+	// -------------------------------------------------------------------------
+	// Hook integracyjny dla mechanizmów logowania (issue #11)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Uruchamia hook `ihumbak_wrs_email_send_complete` po zakończeniu przetwarzania
+	 * w ścieżce AS-driven (handle_send) lub manual resend (send_for_order).
+	 *
+	 * Hook ten jest punktem integracyjnym dla przyszłego mechanizmu logowania
+	 * z issue #11. send_test() NIGDY nie wywołuje tego hooka — zapewnia to,
+	 * że wysyłki testowe pozostają wolne od efektów ubocznych w DB.
+	 *
+	 * Sygnatura listenera:
+	 *   do_action( 'ihumbak_wrs_email_send_complete', Ihumbak_WRS_Email_Send_Result $result, int $order_id, int $step );
+	 *
+	 * @param Ihumbak_WRS_Email_Send_Result $result   Wynik przetwarzania.
+	 * @param int                           $order_id ID zamówienia.
+	 * @param int                           $step     Numer kroku sekwencji.
+	 */
+	private function fire_send_complete_hook( Ihumbak_WRS_Email_Send_Result $result, int $order_id, int $step ): void {
+		do_action( 'ihumbak_wrs_email_send_complete', $result, $order_id, $step );
 	}
 
 	/**
