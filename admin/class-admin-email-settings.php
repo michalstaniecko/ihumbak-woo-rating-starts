@@ -740,6 +740,17 @@ class Ihumbak_WRS_Admin_Email_Settings {
                 submit_button();
                 ?>
             </form>
+            <?php
+            /**
+             * Hook uruchamiany po zamknięciu głównego formularza ustawień e-mail.
+             *
+             * Używany przez Ihumbak_WRS_Admin_Email_Tools::render_test_send_box()
+             * do wstrzyknięcia formularza testowego wysyłania wiadomości.
+             *
+             * @since 1.4.0
+             */
+            do_action( 'ihumbak_wrs_after_email_settings_form' );
+            ?>
         </div>
         <?php
     }
