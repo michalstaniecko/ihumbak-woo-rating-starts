@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 - Opcja `ihumbak_wrs_email_followups` umozliwiajaca konfiguracje 0-3 przypomnien (follow-up) po wysylce poczatkowej. Kazde przypomnienie ma wlasne opoznienie (dni) i niezaleznie respektuje reguly pomijania (#9).
 - Nowa klasa `Ihumbak_WRS_Email_Followup_Scheduler` nasluchujaca `ihumbak_wrs_email_send_complete` i planujaca kolejny krok przez Action Scheduler (#9).
 - UI w ustawieniach: sekcja "Przypomnienia (follow-up)" z repeaterem 0-3 wpisow (dodaj/usun/zmien kolejnosc), realizowanym przez waniliowy JavaScript (#9).
+- Meta-box "Wiadomosci z prosba o ocene / Review request emails" na ekranie edycji zamowienia (klasyczny CPT i HPOS). Pokazuje zaplanowane kroki AS dla zamowienia z timestampami, skrocona konfiguracje follow-upow i hint, ze reczna wysylka rowniez uruchamia skonfigurowany lancuch przypomnien (#9).
+- Statyczny helper `Ihumbak_WRS_Email_Scheduler::get_pending_steps_for_order( int $order_id ): array` zwracajacy mape `step => timestamp` dla biezacych zaplanowanych zadan AS dla zamowienia (#9).
 
 ### Changed
 - `Ihumbak_WRS_Email_Scheduler::STEPS` rozszerzony z `[0]` do `[0, 1, 2, 3]`; dodano stala `MAX_FOLLOWUPS = 3` i statyczna metode `schedule_followup()`. Anulowanie wysylek przy zwrocie/anulowaniu zamowienia czysci rowniez zaplanowane przypomnienia (kroki 1-3).

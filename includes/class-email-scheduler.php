@@ -343,4 +343,40 @@ class Ihumbak_WRS_Email_Scheduler {
 
         return true;
     }
+
+    /**
+     * Zwraca mapę kroków oczekujących w AS dla danego zamówienia.
+     *
+     * Iteruje po STEPS i dla każdego kroku pyta Action Scheduler o najbliższe
+     * zaplanowane zadanie pasujące do (hook, build_args, group). Zwraca tylko
+     * kroki, dla których istnieje zaplanowane zadanie.
+     *
+     * @since 1.2.0
+     *
+     * @param int $order_id ID zamówienia.
+     * @return array<int, int> Mapa `step => timestamp` (UTC) najbliższego zaplanowanego zadania.
+     */
+    public static function get_pending_steps_for_order( int $order_id ): array {
+        if ( ! function_exists( 'as_next_scheduled_action' ) ) {
+            return array();
+        }
+
+        $pending = array();
+
+        foreach ( self::STEPS as $step ) {
+            $step = (int) $step;
+
+            $timestamp = as_next_scheduled_action(
+                self::SEND_ACTION_HOOK,
+                self::build_args( $order_id, $step ),
+                self::AS_GROUP
+            );
+
+            if ( $timestamp ) {
+                $pending[ $step ] = (int) $timestamp;
+            }
+        }
+
+        return $pending;
+    }
 }
