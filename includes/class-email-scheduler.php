@@ -192,6 +192,10 @@ class Ihumbak_WRS_Email_Scheduler {
      * @return bool True jeśli zadanie jest już w kolejce AS.
      */
     public static function is_already_scheduled( int $order_id, int $step = self::STEP_INITIAL ): bool {
+        if ( ! function_exists( 'as_next_scheduled_action' ) ) {
+            return false;
+        }
+
         return (bool) as_next_scheduled_action(
             self::SEND_ACTION_HOOK,
             self::build_args( $order_id, $step ),
@@ -297,6 +301,11 @@ class Ihumbak_WRS_Email_Scheduler {
      * @return bool True jeśli zadanie zostało zaplanowane, false w pozostałych przypadkach.
      */
     public static function schedule_followup( int $order_id, int $next_step ): bool {
+        // Action Scheduler musi być dostępny — bez tego wywołania niżej rzuciłyby fatal error.
+        if ( ! function_exists( 'as_schedule_single_action' ) || ! function_exists( 'as_next_scheduled_action' ) ) {
+            return false;
+        }
+
         // Sprawdź, czy funkcjonalność e-mail jest włączona.
         if ( ! (bool) get_option( 'ihumbak_wrs_email_enabled', false ) ) {
             return false;
@@ -323,11 +332,8 @@ class Ihumbak_WRS_Email_Scheduler {
         $entry      = $followups[ $entry_index ];
         $delay_days = isset( $entry['delay_days'] ) ? (int) $entry['delay_days'] : 0;
 
-        // Zakres 1–365; wartości poza zakresem dyskwalifikują wpis.
+        // Zakres 1–365; wartości spoza zakresu są klampowane do najbliższej granicy.
         $delay_days = max( 1, min( 365, $delay_days ) );
-        if ( $delay_days < 1 ) {
-            return false;
-        }
 
         // Deduplicja — nie planuj jeśli już istnieje zadanie dla tego kroku.
         if ( self::is_already_scheduled( $order_id, $next_step ) ) {

@@ -819,8 +819,8 @@ class Ihumbak_WRS_Admin_Email_Settings {
      * @since 1.2.0
      */
     public function render_followups_section_intro() {
-        echo '<p>' . esc_html__( 'Opcjonalne przypomnienia wysyłane po e-mailu początkowym. Każde przypomnienie korzysta z tego samego szablonu (temat i treść) i niezależnie sprawdza reguły pomijania — np. jeśli klient ocenił produkty po kroku 0, krok 1 zostanie automatycznie pominięty.', 'ihumbak-woo-rating-stars' ) . '</p>';
-        echo '<p>' . esc_html__( 'Opóźnienie każdego przypomnienia liczone jest od momentu poprzedniej wysyłki (model względny). Możliwe 0–3 wpisy.', 'ihumbak-woo-rating-stars' ) . '</p>';
+        echo '<p>' . esc_html__( 'Opcjonalne przypomnienia wysyłane po e-mailu początkowym. Każde przypomnienie korzysta z tego samego szablonu (temat i treść). Przed każdą wysyłką ponownie sprawdzane są reguły pomijania — np. jeśli klient ocenił produkty po kroku 0, krok 1 zostanie automatycznie pominięty.', 'ihumbak-woo-rating-stars' ) . '</p>';
+        echo '<p>' . esc_html__( 'Opóźnienie każdego przypomnienia liczone jest od momentu poprzedniej wysyłki (model względny). Łańcuch jest kontynuowany wyłącznie po skutecznej wysyłce — jeśli któryś krok zostanie pominięty lub zakończy się błędem, kolejne przypomnienia nie zostaną wysłane. Możliwe 0–3 wpisy.', 'ihumbak-woo-rating-stars' ) . '</p>';
     }
 
     /**
@@ -949,11 +949,16 @@ class Ihumbak_WRS_Admin_Email_Settings {
             /**
              * Zamienia miejscami dwa sąsiednie wiersze.
              *
-             * @param {HTMLElement} rowA Wiersz do przesunięcia w górę.
-             * @param {HTMLElement} rowB Wiersz do przesunięcia w dół.
+             * Wstawia `upper` przed `lower` w DOM, dzięki czemu `upper` ląduje wyżej.
+             * Aby przesunąć klikniety wiersz w dół, należy wywołać z (next, row) —
+             * wówczas sąsiad poniżej zostanie wstawiony przed nim, co efektywnie
+             * przesuwa klikniety wiersz w dół.
+             *
+             * @param {HTMLElement} upper Wiersz, który po operacji ma znaleźć się wyżej.
+             * @param {HTMLElement} lower Wiersz, który po operacji ma znaleźć się niżej.
              */
-            function swapRows( rowA, rowB ) {
-                tbody.insertBefore( rowA, rowB );
+            function swapRows( upper, lower ) {
+                tbody.insertBefore( upper, lower );
                 reindex();
             }
 
