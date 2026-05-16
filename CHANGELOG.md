@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added (issue #10 — coupon incentive placeholder)
+- Nowa opcja `ihumbak_wrs_email_coupon_id` (int, domyślnie `0`) — wybór opublikowanego kuponu WooCommerce dołączanego do wiadomości z prośbą o ocenę. Sanitizacja: `absint`. Cleanup w `uninstall.php`.
+- Nowy placeholder `{coupon_code}` — wstawia kod wybranego kuponu do tematu i treści wiadomości. Gdy kupon nie jest skonfigurowany lub nie jest opublikowany, placeholder zastępowany jest pustym ciągiem. / New `{coupon_code}` placeholder — inserts the configured coupon code into the email subject and body. Collapses to empty string when no coupon is configured or the coupon is no longer published.
+- Prywatna metoda `Ihumbak_WRS_Email_Sender::resolve_coupon_code(): string` — rozwiązuje kod kuponu z opcji `ihumbak_wrs_email_coupon_id`; zwraca verbatim `post_title` lub pusty ciąg.
+- Selektor kuponu w panelu ustawień e-mail (sekcja „Treść wiadomości / Email content") — lista opublikowanych kuponów lub „— brak / none —" gdy WooCommerce jest niedostępny.
+- `build_fake_context()` używa skonfigurowanego kuponu gdy dostępny; fallback do przykładowego kodu `PRZYKLAD10` gdy brak konfiguracji.
+- Added: `{coupon_code}` placeholder — configurable coupon selector in email settings (issue #10).
+
 ### Added (issue #21 — WooCommerce email template wrap)
 - Nowa opcja `ihumbak_wrs_email_heading` (typ string, domyślnie pusty ciąg) — konfigurowalny nagłówek wewnętrzny wiadomości e-mail wyświetlany jako `<h1>` wewnątrz szablonu WooCommerce. Obsługuje placeholder-y skalarne (identyczne jak temat). Gdy puste — stosowana jest domyślna wartość „Twoja opinia jest dla nas ważna".
 - Prywatna metoda `Ihumbak_WRS_Email_Sender::wrap_with_wc_template( string $body_html, string $heading ): string` owijająca wyrenderowaną treść wiadomości w domyślny szablon transakcyjny WooCommerce. Preferuje `WC_Emails::apply_transactional_email_template()` (WC 3.7+), fallback do `style_inline( wrap_message() )`, ostatni fallback do samego `wrap_message()`. Chroniona przed wyjątkami (try/catch Throwable). Gdy WC jest niedostępne — zwraca niezmienione `$body_html`.
