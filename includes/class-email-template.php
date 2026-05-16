@@ -29,6 +29,7 @@ class Ihumbak_WRS_Email_Template {
         'site_url',
         'products_list',
         'rating_links_list',
+        'coupon_code',
     );
 
     /**

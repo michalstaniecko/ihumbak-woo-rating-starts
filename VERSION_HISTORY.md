@@ -1,5 +1,26 @@
 # Historia Wersji - WooCommerce Quick Ratings & Reviews
 
+## [Unreleased] — issue #10: Coupon placeholder
+
+### Dodane
+- Opcja `ihumbak_wrs_email_coupon_id` (int, domyślnie 0) — wybór kuponu WooCommerce
+  dołączanego do wiadomości z prośbą o ocenę.
+- Placeholder `{coupon_code}` — zaimplementowany (wcześniej oczekiwał).
+- Prywatna metoda `Ihumbak_WRS_Email_Sender::resolve_coupon_code()` — rozwiązuje
+  kod kuponu; zwraca verbatim `post_title` gdy kupon jest opublikowany lub pusty ciąg.
+- Selektor kuponu w ustawieniach e-mail (sekcja "Treść wiadomości / Email content").
+- `build_fake_context()` używa skonfigurowanego kuponu lub fallback `PRZYKLAD10`.
+
+**Zmienione pliki:**
+- `includes/class-email-template.php`
+- `includes/class-email-sender.php`
+- `admin/class-admin-email-settings.php`
+- `uninstall.php`
+- `CHANGELOG.md`
+- `VERSION_HISTORY.md`
+
+---
+
 ## [Unreleased] — issue #7: Rating deep links
 
 ### Dodane
@@ -18,7 +39,8 @@
   blok escapowania w `process()`; kontekst tematu podstawia puste ciągi dla obu nowych kluczy.
 - `Ihumbak_WRS_Email_Template::KNOWN_PLACEHOLDERS`: dodano `products_list` i `rating_links_list`.
 - Admin UI (`admin/class-admin-email-settings.php`): zaktualizowano disclaimer w sekcji
-  treści emaila — informuje, że oba placeholdery działają; `{coupon_code}` nadal oczekuje.
+  treści emaila — informuje, że oba placeholdery działają; `{coupon_code}` nadal oczekiwał
+  na implementację (zrealizowane w issue #10).
 
 **Zmienione pliki:**
 - `includes/class-email-product-list.php` (nowy)

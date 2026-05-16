@@ -195,6 +195,16 @@ class Ihumbak_WRS_Admin_Email_Settings {
 
         register_setting(
             self::OPTION_GROUP,
+            'ihumbak_wrs_email_coupon_id',
+            array(
+                'type'              => 'integer',
+                'default'           => 0,
+                'sanitize_callback' => 'absint',
+            )
+        );
+
+        register_setting(
+            self::OPTION_GROUP,
             'ihumbak_wrs_email_followups',
             array(
                 'type'              => 'array',
@@ -322,6 +332,15 @@ class Ihumbak_WRS_Admin_Email_Settings {
             self::PAGE_SLUG,
             'ihumbak_wrs_email_content',
             array( 'label_for' => 'ihumbak_wrs_email_body' )
+        );
+
+        add_settings_field(
+            'ihumbak_wrs_email_coupon_id',
+            __( 'Kupon dla klienta / Customer coupon', 'ihumbak-woo-rating-stars' ),
+            array( $this, 'render_coupon_id' ),
+            self::PAGE_SLUG,
+            'ihumbak_wrs_email_content',
+            array( 'label_for' => 'ihumbak_wrs_email_coupon_id' )
         );
 
         add_settings_field(
@@ -585,7 +604,7 @@ class Ihumbak_WRS_Admin_Email_Settings {
             'products_list'       => __( 'lista produktów z zamówienia', 'ihumbak-woo-rating-stars' ),
             'rating_links_list'   => __( 'lista linków do oceny produktów', 'ihumbak-woo-rating-stars' ),
             'site_name'           => __( 'nazwa sklepu', 'ihumbak-woo-rating-stars' ),
-            'coupon_code'         => __( 'kod kuponu (zostanie dodane w kolejnym etapie)', 'ihumbak-woo-rating-stars' ),
+            'coupon_code'         => __( 'kod kuponu (opcjonalny)', 'ihumbak-woo-rating-stars' ),
         );
 
         echo '<p>' . esc_html__( 'Dostępne placeholdery (możesz ich użyć w temacie i treści):', 'ihumbak-woo-rating-stars' ) . '</p>';
@@ -594,7 +613,7 @@ class Ihumbak_WRS_Admin_Email_Settings {
             echo '<li><code>' . esc_html( '{' . $key . '}' ) . '</code> — ' . esc_html( $desc ) . '</li>';
         }
         echo '</ul>';
-        echo '<p><em>' . esc_html__( 'Placeholdery {products_list} i {rating_links_list} są w pełni obsługiwane. Placeholder {coupon_code} zostanie dodany w kolejnym etapie.', 'ihumbak-woo-rating-stars' ) . '</em></p>';
+        echo '<p><em>' . esc_html__( 'Wszystkie wymienione placeholdery są w pełni obsługiwane. / All listed placeholders are fully supported.', 'ihumbak-woo-rating-stars' ) . '</em></p>';
     }
 
     /**
@@ -818,6 +837,69 @@ class Ihumbak_WRS_Admin_Email_Settings {
         ?>
         <p class="description">
             <?php esc_html_e( 'Treść HTML wiadomości. Dozwolone tagi zgodne z wp_kses_post.', 'ihumbak-woo-rating-stars' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Renderuje selektor kuponu przypisywanego do wiadomości e-mail.
+     *
+     * Wyświetla listę opublikowanych kuponów WooCommerce (post_type 'shop_coupon').
+     * Gdy zapisane ID nie odpowiada żadnemu opublikowanemu kuponowi (kupon usunięty
+     * lub w stanie draft), selektor pokazuje "— brak / none —" jako aktywny wybór,
+     * ale w opcji nadal przechowywane jest stare ID — zostanie ono ponownie dopasowane
+     * jeśli kupon wróci do statusu 'publish'. Nadpisanie następuje dopiero przy zapisie
+     * formularza.
+     *
+     * Brak paginacji ani lazy-load — typowy sklep posiada mniej niż 100 kuponów.
+     * W razie potrzeby można rozważyć autocomplete Select2 w przyszłości.
+     *
+     * Kupon NIE jest automatycznie stosowany do zamówienia — klient musi wpisać kod
+     * ręcznie przy kasie. Placeholder {coupon_code} jedynie wstawia kod do treści emaila.
+     */
+    public function render_coupon_id() {
+        $value = (int) get_option( 'ihumbak_wrs_email_coupon_id', 0 );
+
+        if ( ! post_type_exists( 'shop_coupon' ) ) {
+            // Disabled select nie jest wysyłany przy submit (HTML spec); dodatkowy
+            // ukryty input gwarantuje, że zapisanie ustawień przy nieaktywnym WC
+            // nie wyzeruje istniejącej wartości — przekazujemy zapisane ID 1:1.
+            ?>
+            <input type="hidden" name="ihumbak_wrs_email_coupon_id" value="<?php echo (int) $value; ?>" />
+            <select id="ihumbak_wrs_email_coupon_id" disabled>
+                <option value="0"><?php esc_html_e( '— brak / none —', 'ihumbak-woo-rating-stars' ); ?></option>
+            </select>
+            <p class="description">
+                <?php esc_html_e( 'WooCommerce nie jest aktywne — lista kuponów jest niedostępna.', 'ihumbak-woo-rating-stars' ); ?>
+            </p>
+            <?php
+            return;
+        }
+
+        $coupons = get_posts(
+            array(
+                'post_type'        => 'shop_coupon',
+                'post_status'      => 'publish',
+                'posts_per_page'   => -1,
+                'orderby'          => 'title',
+                'order'            => 'ASC',
+                'no_found_rows'    => true,
+                'suppress_filters' => false,
+            )
+        );
+        ?>
+        <select id="ihumbak_wrs_email_coupon_id" name="ihumbak_wrs_email_coupon_id">
+            <option value="0" <?php selected( 0, $value ); ?>>
+                <?php esc_html_e( '— brak / none —', 'ihumbak-woo-rating-stars' ); ?>
+            </option>
+            <?php foreach ( $coupons as $coupon ) : ?>
+                <option value="<?php echo (int) $coupon->ID; ?>" <?php selected( (int) $coupon->ID, $value ); ?>>
+                    <?php echo esc_html( $coupon->post_title ); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description">
+            <?php esc_html_e( 'Tylko opublikowane kupony są widoczne na liście. Pusty wybór wyłącza placeholder. Kupon nie jest stosowany automatycznie — klient musi wpisać kod ręcznie przy kasie. / Only published coupons are listed. Empty selection disables the placeholder. The coupon is not applied automatically — the customer must enter it at checkout.', 'ihumbak-woo-rating-stars' ); ?>
         </p>
         <?php
     }

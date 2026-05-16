@@ -692,13 +692,50 @@ class Ihumbak_WRS_Email_Sender {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Zwraca surowy kod kuponu skonfigurowany w opcji ihumbak_wrs_email_coupon_id.
+	 *
+	 * Pobiera post_type 'shop_coupon' o podanym ID. Zwraca pusty ciąg gdy:
+	 * - Opcja nie jest ustawiona lub ma wartość 0 (brak kuponu).
+	 * - Post o danym ID nie istnieje, nie jest typu 'shop_coupon' lub nie jest opublikowany.
+	 *
+	 * Wartość post_title jest zwracana verbatim — WooCommerce zapisuje kody kuponów
+	 * małymi literami, więc nie ma potrzeby normalizacji.
+	 *
+	 * UWAGA: Metoda zwraca surowy (niezescapowany) ciąg. Wywołujący jest odpowiedzialny
+	 * za escapowanie przed użyciem w HTML (esc_html) lub dla tematu wiadomości (bezpieczny
+	 * jako plain-text).
+	 *
+	 * @return string Surowy kod kuponu lub pusty ciąg.
+	 */
+	private function resolve_coupon_code(): string {
+		$coupon_id = (int) get_option( 'ihumbak_wrs_email_coupon_id', 0 );
+
+		if ( 0 === $coupon_id ) {
+			return '';
+		}
+
+		$coupon_post = get_post( $coupon_id );
+
+		if (
+			$coupon_post instanceof \WP_Post
+			&& 'shop_coupon' === $coupon_post->post_type
+			&& 'publish' === $coupon_post->post_status
+		) {
+			return (string) $coupon_post->post_title;
+		}
+
+		return '';
+	}
+
+	/**
 	 * Buduje tablicę kontekstu przekazywaną do Ihumbak_WRS_Email_Template::render().
 	 *
 	 * Wartości surowe (nie-HTML) — escaping odbywa się w build_html_context() przed
 	 * wywołaniem render() dla body lub jest pominięty dla subject (nagłówek plain-text).
 	 *
-	 * Klucz coupon_code jest poza zakresem — silnik szablonów zastąpi go pustym
-	 * ciągiem zgodnie ze swoim kontraktem dla nieznanych kluczy.
+	 * Klucz coupon_code jest rozwiązywany przez resolve_coupon_code() z opcji
+	 * ihumbak_wrs_email_coupon_id. Zwraca pusty ciąg gdy kupon nie jest skonfigurowany
+	 * lub skonfigurowany kupon nie istnieje / nie jest opublikowany.
 	 *
 	 * @param \WC_Order $order Zamówienie.
 	 * @return array<string,string> Kontekst surowy (bez HTML escaping).
@@ -717,6 +754,7 @@ class Ihumbak_WRS_Email_Sender {
 			'order_date'          => $order_date,
 			'site_name'           => get_bloginfo( 'name' ),
 			'site_url'            => home_url(),
+			'coupon_code'         => $this->resolve_coupon_code(),
 		);
 	}
 
@@ -726,6 +764,8 @@ class Ihumbak_WRS_Email_Sender {
 	 * Skalarne wartości z build_context() są escapowane przez esc_html()/esc_url().
 	 * Wartości products_list i rating_links_list są już bezpiecznym HTML wygenerowanym
 	 * przez Ihumbak_WRS_Email_Product_List — NIE należy ich owijać w esc_html().
+	 * coupon_code jest escapowany przez esc_html() — WooCommerce zapisuje post_title
+	 * kuponu małymi literami, znaki alfanumeryczne + '-'/'_' są bezpieczne w HTML.
 	 *
 	 * @param \WC_Order                 $order Zamówienie.
 	 * @param \WC_Order_Item_Product[]  $items Przefiltrowane pozycje zamówienia.
@@ -744,6 +784,7 @@ class Ihumbak_WRS_Email_Sender {
 			'site_url'            => esc_url( $context['site_url'] ),
 			'products_list'       => Ihumbak_WRS_Email_Product_List::render_products_list( $items ),
 			'rating_links_list'   => Ihumbak_WRS_Email_Product_List::render_rating_links_list( $items ),
+			'coupon_code'         => esc_html( $context['coupon_code'] ),
 		);
 	}
 
@@ -771,6 +812,13 @@ class Ihumbak_WRS_Email_Sender {
 			. '<li><a href="' . $rating_url . '">' . esc_html( $sample_product_label ) . '</a></li>' . "\n"
 			. '</ul>';
 
+		// Resolve coupon code — use configured coupon when available, fall back to a sample code.
+		// Verbatim post_title is used (WooCommerce lowercases coupon codes on save).
+		$resolved_coupon = $this->resolve_coupon_code();
+		$fake_coupon     = '' !== $resolved_coupon
+			? esc_html( $resolved_coupon )
+			: esc_html__( 'PRZYKLAD10', 'ihumbak-woo-rating-stars' );
+
 		return array(
 			'customer_name'       => esc_html__( 'Jan Kowalski', 'ihumbak-woo-rating-stars' ),
 			'customer_first_name' => esc_html__( 'Jan', 'ihumbak-woo-rating-stars' ),
@@ -781,6 +829,7 @@ class Ihumbak_WRS_Email_Sender {
 			'site_url'            => esc_url( $site_url ),
 			'products_list'       => $products_list,
 			'rating_links_list'   => $rating_links_list,
+			'coupon_code'         => $fake_coupon,
 		);
 	}
 
