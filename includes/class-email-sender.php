@@ -71,7 +71,9 @@ class Ihumbak_WRS_Email_Sender {
 	 * dwa skalarne argumenty zamiast pojedynczej tablicy.
 	 *
 	 * Wykonuje pełny potok walidacji i reguł pomijania, buduje kontekst,
-	 * renderuje wiadomość i wywołuje dispatch(). Wszystkie wyjątki są przechwytywane.
+	 * renderuje wiadomość i wywołuje dispatch_raw(). Wartość zwracana przez
+	 * process() jest celowo ignorowana — zachowanie AS-driven path pozostaje
+	 * niezmienione. Wszystkie wyjątki są przechwytywane.
 	 *
 	 * @param int $order_id ID zamówienia.
 	 * @param int $step     Numer kroku sekwencji (0 = wiadomość początkowa).
@@ -97,26 +99,185 @@ class Ihumbak_WRS_Email_Sender {
 	}
 
 	// -------------------------------------------------------------------------
+	// Publiczne API dla narzędzi admina (issue #8)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Wysyła e-mail z prośbą o ocenę dla wskazanego zamówienia.
+	 *
+	 * Cienki wrapper wokół process() przeznaczony do wywołania z poziomu
+	 * narzędzi administracyjnych (ręczne ponowne wysłanie z ekranu zamówienia).
+	 * Respektuje reguły pomijania identycznie jak ścieżka AS-driven.
+	 * Zwraca obiekt wyniku z informacją o statusie / przyczynie pominięcia.
+	 *
+	 * @param int $order_id ID zamówienia WooCommerce.
+	 * @param int $step     Numer kroku sekwencji (domyślnie 0).
+	 * @return Ihumbak_WRS_Email_Send_Result Wynik wysyłki.
+	 */
+	public function send_for_order( int $order_id, int $step = 0 ): Ihumbak_WRS_Email_Send_Result {
+		try {
+			return $this->process( $order_id, $step );
+		} catch ( \Throwable $e ) {
+			$this->log_failure(
+				'Nieoczekiwany wyjątek w send_for_order',
+				array(
+					'order_id' => $order_id,
+					'step'     => $step,
+					'error'    => $e->getMessage(),
+					'file'     => $e->getFile(),
+					'line'     => $e->getLine(),
+				)
+			);
+
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_EXCEPTION,
+				__( 'Wystąpił nieoczekiwany błąd podczas wysyłki.', 'ihumbak-woo-rating-stars' )
+			);
+		}
+	}
+
+	/**
+	 * Wysyła testową wiadomość e-mail z prośbą o ocenę.
+	 *
+	 * WAŻNE: Metoda celowo NIE wywołuje process() — omija wszelkie reguły
+	 * pomijania, nie planuje zadań AS, nie zapisuje logów (nawet gdy #11 dostarczy
+	 * mechanizm logowania), nie uruchamia hooka `ihumbak_wrs_email_sent`.
+	 * Test-sendy MUSZĄ pozostać bez żadnych efektów ubocznych w bazie danych.
+	 *
+	 * Kolejność rozwiązywania kontekstu:
+	 *   1. Gdy $sample_order_id jest podany i wc_get_order() zwróci WC_Order — użyj realnego zamówienia.
+	 *   2. Gdy brak ID — pobierz ostatnie ukończone zamówienie przez wc_get_orders().
+	 *   3. Gdy żadne zamówienie nie jest dostępne — użyj budowanego fake-kontekstu.
+	 *
+	 * Temat jest prefiksowany przez [TEST] (idempotentnie — bez duplikowania prefiksu).
+	 *
+	 * @param string   $recipient       Adres e-mail odbiorcy testu.
+	 * @param int|null $sample_order_id Opcjonalne ID zamówienia do użycia jako kontekst.
+	 * @return Ihumbak_WRS_Email_Send_Result Wynik wysyłki (is_test === true).
+	 */
+	public function send_test( string $recipient, ?int $sample_order_id = null ): Ihumbak_WRS_Email_Send_Result {
+		// Walidacja adresu odbiorcy.
+		if ( empty( $recipient ) || ! is_email( $recipient ) ) {
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_INVALID_EMAIL,
+				__( 'Podany adres e-mail odbiorcy jest nieprawidłowy.', 'ihumbak-woo-rating-stars' ),
+				true
+			);
+		}
+
+		// Pobierz surowy temat i treść z ustawień.
+		$raw_subject = (string) get_option( 'ihumbak_wrs_email_subject', '' );
+		$raw_body    = (string) get_option( 'ihumbak_wrs_email_body', '' );
+
+		// Rozwiąż kontekst dla podstawień w szablonie.
+		$order        = null;
+		$sample_items = array();
+
+		if ( null !== $sample_order_id && $sample_order_id > 0 ) {
+			$candidate = wc_get_order( $sample_order_id );
+			if ( $candidate instanceof \WC_Order ) {
+				$order        = $candidate;
+				$sample_items = $order->get_items( 'line_item' );
+			}
+		}
+
+		if ( null === $order ) {
+			$recent = wc_get_orders(
+				array(
+					'status'  => array( 'completed' ),
+					'limit'   => 1,
+					'orderby' => 'date',
+					'order'   => 'DESC',
+					'return'  => 'objects',
+				)
+			);
+			if ( ! empty( $recent ) && reset( $recent ) instanceof \WC_Order ) {
+				$order        = reset( $recent );
+				$sample_items = $order->get_items( 'line_item' );
+			}
+		}
+
+		// Zbuduj konteksty do renderowania szablonu.
+		if ( null !== $order ) {
+			$subject_context = $this->build_context( $order ) + array(
+				'products_list'     => '',
+				'rating_links_list' => '',
+			);
+			$html_context = $this->build_html_context( $order, $sample_items );
+		} else {
+			$fake_context = $this->build_fake_context();
+			$subject_context = $fake_context + array(
+				'products_list'     => '',
+				'rating_links_list' => '',
+			);
+			$html_context = $fake_context;
+		}
+
+		// Renderuj temat i treść.
+		$subject = Ihumbak_WRS_Email_Template::render( $raw_subject, $subject_context );
+		$body    = Ihumbak_WRS_Email_Template::render( $raw_body, $html_context );
+
+		if ( '' === trim( $subject ) || '' === trim( $body ) ) {
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_EMPTY_TEMPLATE,
+				__( 'Temat lub treść szablonu jest pusta — uzupełnij ustawienia.', 'ihumbak-woo-rating-stars' ),
+				true
+			);
+		}
+
+		// Dodaj prefiks [TEST] do tematu.
+		$subject = $this->prefix_test_subject( $subject );
+
+		// Wyślij bez żadnych efektów ubocznych.
+		$sent = $this->dispatch_raw( $recipient, $subject, $body );
+
+		if ( ! $sent ) {
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_WP_MAIL_FAILED,
+				__( 'wp_mail zwrócił false. Sprawdź konfigurację SMTP.', 'ihumbak-woo-rating-stars' ),
+				true
+			);
+		}
+
+		return Ihumbak_WRS_Email_Send_Result::sent( true );
+	}
+
+	// -------------------------------------------------------------------------
 	// Potok przetwarzania (prywatny)
 	// -------------------------------------------------------------------------
 
 	/**
 	 * Właściwy potok — walidacja, reguły pomijania, render, dispatch.
 	 *
+	 * Zmiana względem wersji pre-#8: metoda zwraca Ihumbak_WRS_Email_Send_Result
+	 * zamiast void. handle_send() ignoruje wartość zwracaną — brak zmiany
+	 * zachowania dla ścieżki AS-driven.
+	 *
 	 * @param int $order_id ID zamówienia przekazane przez AS.
 	 * @param int $step     Numer kroku sekwencji.
+	 * @return Ihumbak_WRS_Email_Send_Result Wynik wysyłki.
 	 */
-	private function process( int $order_id, int $step ): void {
+	private function process( int $order_id, int $step ): Ihumbak_WRS_Email_Send_Result {
 
 		// Krok 1 — Walidacja argumentów.
 		if ( $order_id <= 0 ) {
 			$this->log_failure( 'Nieprawidłowe order_id', array( 'order_id' => $order_id, 'step' => $step ) );
-			return;
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_INVALID_ORDER,
+				sprintf(
+					/* translators: %d: ID zamówienia */
+					__( 'Nie udało się pobrać zamówienia o ID %d.', 'ihumbak-woo-rating-stars' ),
+					$order_id
+				)
+			);
 		}
 
 		// Krok 2 — Reguła 1: Funkcjonalność wyłączona.
 		if ( $this->should_skip_feature_disabled() ) {
-			return;
+			return Ihumbak_WRS_Email_Send_Result::skipped(
+				Ihumbak_WRS_Email_Send_Result::REASON_FEATURE_DISABLED,
+				__( 'Funkcja e-maili z prośbą o ocenę jest wyłączona w ustawieniach.', 'ihumbak-woo-rating-stars' )
+			);
 		}
 
 		// Krok 3 — Pobranie zamówienia + Reguła 2: Stan zamówienia.
@@ -124,11 +285,21 @@ class Ihumbak_WRS_Email_Sender {
 
 		if ( ! $order instanceof \WC_Order ) {
 			$this->log_failure( 'Zamówienie nie istnieje lub nie jest WC_Order', array( 'order_id' => $order_id ) );
-			return;
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_INVALID_ORDER,
+				sprintf(
+					/* translators: %d: ID zamówienia */
+					__( 'Nie udało się pobrać zamówienia o ID %d.', 'ihumbak-woo-rating-stars' ),
+					$order_id
+				)
+			);
 		}
 
 		if ( $this->should_skip_order_state( $order ) ) {
-			return;
+			return Ihumbak_WRS_Email_Send_Result::skipped(
+				Ihumbak_WRS_Email_Send_Result::REASON_ORDER_STATE,
+				__( 'Zamówienie jest w statusie zwrócone/anulowane — pominięto.', 'ihumbak-woo-rating-stars' )
+			);
 		}
 
 		// Krok 4 — Ustalenie odbiorcy.
@@ -136,31 +307,44 @@ class Ihumbak_WRS_Email_Sender {
 
 		if ( empty( $email ) || ! is_email( $email ) ) {
 			$this->log_failure( 'Brak prawidłowego adresu e-mail odbiorcy', array( 'order_id' => $order_id ) );
-			return;
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_INVALID_EMAIL,
+				__( 'Zamówienie nie ma prawidłowego adresu e-mail rozliczeniowego.', 'ihumbak-woo-rating-stars' )
+			);
 		}
-
-		$user_id = (int) $order->get_user_id();
 
 		// Krok 5 — Zebranie pozycji zamówienia.
 		$items = $order->get_items( 'line_item' );
 
 		if ( empty( $items ) ) {
-			return;
+			return Ihumbak_WRS_Email_Send_Result::skipped(
+				Ihumbak_WRS_Email_Send_Result::REASON_ALL_EXCLUDED,
+				__( 'Wszystkie produkty z zamówienia są wykluczone z wysyłki.', 'ihumbak-woo-rating-stars' )
+			);
 		}
 
 		// Krok 6 — Reguła 3: Wykluczone produkty i kategorie.
+		// Uwaga: empty($items) po tym kroku → REASON_ALL_EXCLUDED.
+		// empty($items) po kroku 7 (oceny) → REASON_ALL_ALREADY_RATED.
+		// Dwa osobne bloki poniżej rozróżniają te dwie przyczyny.
 		$items = $this->filter_excluded_items( $items );
 
 		if ( empty( $items ) ) {
-			return;
+			return Ihumbak_WRS_Email_Send_Result::skipped(
+				Ihumbak_WRS_Email_Send_Result::REASON_ALL_EXCLUDED,
+				__( 'Wszystkie produkty z zamówienia są wykluczone z wysyłki.', 'ihumbak-woo-rating-stars' )
+			);
 		}
 
 		// Krok 7 — Reguła 4: Już ocenione produkty.
 		$items = $this->filter_already_rated_items( $items, $order );
 
-		// Krok 8 — Reguła 5: Pusta lista po filtracji.
+		// Krok 8 — Reguła 5: Pusta lista po filtracji ocen.
 		if ( empty( $items ) ) {
-			return;
+			return Ihumbak_WRS_Email_Send_Result::skipped(
+				Ihumbak_WRS_Email_Send_Result::REASON_ALL_ALREADY_RATED,
+				__( 'Klient już ocenił wszystkie produkty z zamówienia.', 'ihumbak-woo-rating-stars' )
+			);
 		}
 
 		// Krok 9 — Budowanie kontekstu, render, dispatch.
@@ -187,10 +371,22 @@ class Ihumbak_WRS_Email_Sender {
 				'Pusty temat lub treść po renderowaniu — pominięto wysyłkę',
 				array( 'order_id' => $order_id )
 			);
-			return;
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_EMPTY_TEMPLATE,
+				__( 'Temat lub treść szablonu jest pusta — uzupełnij ustawienia.', 'ihumbak-woo-rating-stars' )
+			);
 		}
 
-		$this->dispatch( $email, $subject, $body, $order );
+		$sent = $this->dispatch_raw( $email, $subject, $body );
+
+		if ( ! $sent ) {
+			return Ihumbak_WRS_Email_Send_Result::failed(
+				Ihumbak_WRS_Email_Send_Result::REASON_WP_MAIL_FAILED,
+				__( 'wp_mail zwrócił false. Sprawdź konfigurację SMTP.', 'ihumbak-woo-rating-stars' )
+			);
+		}
+
+		return Ihumbak_WRS_Email_Send_Result::sent();
 	}
 
 	// -------------------------------------------------------------------------
@@ -494,6 +690,43 @@ class Ihumbak_WRS_Email_Sender {
 		);
 	}
 
+	/**
+	 * Buduje fikcyjny kontekst używany przez send_test() gdy żadne zamówienie
+	 * nie jest dostępne.
+	 *
+	 * Pokrywa wszystkie klucze z Ihumbak_WRS_Email_Template::KNOWN_PLACEHOLDERS.
+	 * Wartości są predefiniowane i przetłumaczalne, bezpieczne do renderowania HTML.
+	 * Listy produktów zawierają przykładowy HTML z hardcoded przykładowym produktem.
+	 *
+	 * @return array<string,string> Kontekst z przykładowymi danymi.
+	 */
+	private function build_fake_context(): array {
+		$sample_product_label = __( 'Przykładowy produkt', 'ihumbak-woo-rating-stars' );
+		$site_url             = home_url();
+		$sample_url           = esc_url( $site_url . '/przykladowy-produkt/' );
+		$rating_url           = esc_url( $site_url . '/przykladowy-produkt/#ihumbak-wrs-rate' );
+
+		$products_list = '<ul class="ihumbak-wrs-products-list">' . "\n"
+			. '<li><a href="' . $sample_url . '">' . esc_html( $sample_product_label ) . '</a></li>' . "\n"
+			. '</ul>';
+
+		$rating_links_list = '<ul class="ihumbak-wrs-rating-links">' . "\n"
+			. '<li><a href="' . $rating_url . '">' . esc_html( $sample_product_label ) . '</a></li>' . "\n"
+			. '</ul>';
+
+		return array(
+			'customer_name'       => esc_html__( 'Jan Kowalski', 'ihumbak-woo-rating-stars' ),
+			'customer_first_name' => esc_html__( 'Jan', 'ihumbak-woo-rating-stars' ),
+			'customer_last_name'  => esc_html__( 'Kowalski', 'ihumbak-woo-rating-stars' ),
+			'order_number'        => esc_html( '#TEST-0001' ),
+			'order_date'          => esc_html( date_i18n( (string) get_option( 'date_format', 'Y-m-d' ) ) ),
+			'site_name'           => esc_html( (string) get_bloginfo( 'name' ) ),
+			'site_url'            => esc_url( $site_url ),
+			'products_list'       => $products_list,
+			'rating_links_list'   => $rating_links_list,
+		);
+	}
+
 	// -------------------------------------------------------------------------
 	// Wysyłka
 	// -------------------------------------------------------------------------
@@ -501,18 +734,26 @@ class Ihumbak_WRS_Email_Sender {
 	/**
 	 * Wysyła wiadomość e-mail z treścią HTML przez wp_mail.
 	 *
+	 * Refaktoryzacja z dispatch() — metoda jest teraz self-contained i nie przyjmuje
+	 * obiektu $order (usunięto zależność od WC_Order, by umożliwić wywołanie z send_test()).
+	 *
 	 * Filtr `wp_mail_content_type` jest dodawany wyłącznie na czas wywołania
 	 * wp_mail i zawsze usuwany w bloku `finally` — nawet jeśli wp_mail
 	 * rzuci wyjątek. Zapobiega to globalnej zmianie content-type dla innych
 	 * wiadomości wysyłanych w tym samym requestu.
 	 *
-	 * @param string    $to       Adres odbiorcy.
-	 * @param string    $subject  Wyrenderowany temat wiadomości.
-	 * @param string    $body_html Wyrenderowana treść HTML.
-	 * @param \WC_Order $order    Zamówienie (używane do logowania błędów).
+	 * WAŻNE DLA send_test(): Ta metoda jest używana zarówno przez process() jak i
+	 * send_test(). Nie zawiera żadnego logowania, nie wywołuje hooków — send_test()
+	 * MUSI pozostać wolny od efektów ubocznych. Gdy issue #11 dostarczy mechanizm
+	 * logowania oparty na hooku `ihumbak_wrs_email_sent`, ten hook MUSI być
+	 * wyzwalany wyłącznie z process(), nigdy z send_test().
+	 *
+	 * @param string $to        Adres odbiorcy.
+	 * @param string $subject   Wyrenderowany temat wiadomości.
+	 * @param string $body_html Wyrenderowana treść HTML.
 	 * @return bool Wynik wp_mail — true jeśli wiadomość została przekazana do MTA.
 	 */
-	private function dispatch( string $to, string $subject, string $body_html, \WC_Order $order ): bool {
+	private function dispatch_raw( string $to, string $subject, string $body_html ): bool {
 		$headers   = $this->build_headers();
 		$filter_cb = array( $this, 'force_html_content_type' );
 
@@ -525,19 +766,12 @@ class Ihumbak_WRS_Email_Sender {
 			$this->log_failure(
 				'wp_mail rzucił wyjątek',
 				array(
-					'order_id' => $order->get_id(),
-					'error'    => $e->getMessage(),
+					'to'    => $to,
+					'error' => $e->getMessage(),
 				)
 			);
 		} finally {
 			remove_filter( 'wp_mail_content_type', $filter_cb );
-		}
-
-		if ( ! $sent ) {
-			$this->log_failure(
-				'wp_mail zwrócił false',
-				array( 'order_id' => $order->get_id() )
-			);
 		}
 
 		return $sent;
@@ -595,6 +829,26 @@ class Ihumbak_WRS_Email_Sender {
 	// -------------------------------------------------------------------------
 	// Helpery
 	// -------------------------------------------------------------------------
+
+	/**
+	 * Prefiksuje temat wiadomości testowej ciągiem „[TEST] ".
+	 *
+	 * Operacja jest idempotentna — gdy temat już zaczyna się od prefiksu,
+	 * nie jest dodawany ponownie.
+	 *
+	 * @param string $subject Wyrenderowany temat wiadomości.
+	 * @return string Temat z prefiksem [TEST].
+	 */
+	private function prefix_test_subject( string $subject ): string {
+		/* translators: Prefiks tematu testowej wiadomości e-mail — nie usuwaj nawiasów kwadratowych ani spacji końcowej. */
+		$prefix = __( '[TEST] ', 'ihumbak-woo-rating-stars' );
+
+		if ( 0 === strpos( $subject, $prefix ) ) {
+			return $subject;
+		}
+
+		return $prefix . $subject;
+	}
 
 	/**
 	 * Zwraca adres e-mail odbiorcy pobrany z danych rozliczeniowych zamówienia.

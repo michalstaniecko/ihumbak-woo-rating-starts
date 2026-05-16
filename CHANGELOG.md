@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- New admin tool: test email button on the Email Review Requests settings page. Sends a rendered preview of the current subject/body template to a configurable recipient (defaults to the currently logged-in user). Uses the most recent completed order as sample context, falls back to a hardcoded fake context when no completed orders exist. Requires `manage_woocommerce` capability and a valid nonce. Does not write any persistent state (no log entry, no scheduled job) — closes #8.
+- New admin tool: manual resend action on the WooCommerce order edit screen ("Wyślij e-mail z prośbą o ocenę / Send review request email"). Triggers `Ihumbak_WRS_Email_Sender::send_for_order()` for the current order, respecting all skip rules. Skip reason is reported in the admin notice. A private order note is always written for audit trail purposes — closes #8.
+- New class `Ihumbak_WRS_Admin_Email_Tools` (`admin/class-admin-email-tools.php`) providing the test-send form and order-action handler. Both actions are guarded by `manage_woocommerce` + nonce.
+- New value object `Ihumbak_WRS_Email_Send_Result` (`includes/class-email-send-result.php`) representing the outcome of an email dispatch. Carries `$status` (sent/skipped/failed), `$reason` (REASON_* constant), `$message` (translated, ready to display), and `$is_test` (bool). Used internally by sender and admin tools.
 - New class `Ihumbak_WRS_Email_Product_List` (`includes/class-email-product-list.php`) implementing `{products_list}` and `{rating_links_list}` email template placeholders (issue #7).
 - `{products_list}` renders an HTML `<ul>` of purchased products with links to their product pages.
 - `{rating_links_list}` renders an HTML `<ul>` of purchased products with deep-link URLs pointing directly to the rating widget anchor (`#ihumbak-wrs-rate`).
@@ -13,6 +17,11 @@ All notable changes to this project will be documented in this file.
 - CSS (`assets/css/rating-widget.css`): new `@keyframes ihumbak-wrs-deep-link-pulse` animation and `.ihumbak-wrs-widget.ihumbak-wrs-deep-link-highlight` rule for the arrival highlight effect.
 
 ### Changed
+- `Ihumbak_WRS_Email_Sender::process()` now returns `Ihumbak_WRS_Email_Send_Result` (was void). `handle_send()` (AS-driven path) ignores the return value — no behavioral change for scheduled sends.
+- `Ihumbak_WRS_Email_Sender::process()` disambiguates the two consecutive empty-items checks: the first (after `get_items()`) reports `REASON_ALL_EXCLUDED`; the second (after `filter_excluded_items()`) also reports `REASON_ALL_EXCLUDED`; the third (after `filter_already_rated_items()`) reports `REASON_ALL_ALREADY_RATED`.
+- `Ihumbak_WRS_Email_Sender::dispatch()` refactored into `dispatch_raw(string $to, string $subject, string $body_html): bool` — no longer receives a `WC_Order` argument (removed implicit logging dependency). Used by both `process()` and `send_test()`.
+- New public methods on `Ihumbak_WRS_Email_Sender`: `send_for_order(int $order_id, int $step): Ihumbak_WRS_Email_Send_Result` and `send_test(string $recipient, ?int $sample_order_id): Ihumbak_WRS_Email_Send_Result`.
+- `admin/class-admin-email-settings.php`: `render_page()` now fires `do_action('ihumbak_wrs_after_email_settings_form')` after the closing `</form>` tag, enabling external injection of the test-send card.
 - `Ihumbak_WRS_Email_Sender::process()` now uses the new `build_html_context()` method for HTML body rendering; subject rendering substitutes empty strings for `products_list` and `rating_links_list` to prevent raw HTML leaking into the mail subject line.
 - `Ihumbak_WRS_Email_Template::KNOWN_PLACEHOLDERS` updated to include `products_list` and `rating_links_list`.
 - Admin settings UI (`admin/class-admin-email-settings.php`): disclaimer updated to reflect that `{products_list}` and `{rating_links_list}` are now fully implemented; only `{coupon_code}` remains pending.
