@@ -865,7 +865,7 @@ class Ihumbak_WRS_Admin_Email_Settings {
             // ukryty input gwarantuje, że zapisanie ustawień przy nieaktywnym WC
             // nie wyzeruje istniejącej wartości — przekazujemy zapisane ID 1:1.
             ?>
-            <input type="hidden" name="ihumbak_wrs_email_coupon_id" value="<?php echo (int) $value; ?>" />
+            <input type="hidden" name="ihumbak_wrs_email_coupon_id" value="<?php echo esc_attr( (int) $value ); ?>" />
             <select id="ihumbak_wrs_email_coupon_id" disabled>
                 <option value="0"><?php esc_html_e( '— brak / none —', 'ihumbak-woo-rating-stars' ); ?></option>
             </select>
@@ -893,7 +893,7 @@ class Ihumbak_WRS_Admin_Email_Settings {
                 <?php esc_html_e( '— brak / none —', 'ihumbak-woo-rating-stars' ); ?>
             </option>
             <?php foreach ( $coupons as $coupon ) : ?>
-                <option value="<?php echo (int) $coupon->ID; ?>" <?php selected( (int) $coupon->ID, $value ); ?>>
+                <option value="<?php echo esc_attr( (int) $coupon->ID ); ?>" <?php selected( (int) $coupon->ID, $value ); ?>>
                     <?php echo esc_html( $coupon->post_title ); ?>
                 </option>
             <?php endforeach; ?>
