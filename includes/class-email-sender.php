@@ -185,9 +185,10 @@ class Ihumbak_WRS_Email_Sender {
 			);
 		}
 
-		// Pobierz surowy temat i treść z ustawień.
+		// Pobierz surowy temat, treść i nagłówek z ustawień.
 		$raw_subject = (string) get_option( 'ihumbak_wrs_email_subject', '' );
 		$raw_body    = (string) get_option( 'ihumbak_wrs_email_body', '' );
+		$raw_heading = (string) get_option( 'ihumbak_wrs_email_heading', '' );
 
 		// Rozwiąż kontekst dla podstawień w szablonie.
 		$order        = null;
@@ -248,6 +249,16 @@ class Ihumbak_WRS_Email_Sender {
 				true
 			);
 		}
+
+		// Nagłówek wewnętrzny — renderowany z kontekstem tematu (bez lists).
+		$raw_heading = trim( $raw_heading );
+		if ( '' === $raw_heading ) {
+			$raw_heading = $this->default_heading();
+		}
+		$heading = Ihumbak_WRS_Email_Template::render( $raw_heading, $subject_context );
+
+		// Owijamy treść w szablon transakcyjny WooCommerce (jeśli dostępny).
+		$body = $this->wrap_with_wc_template( $body, $heading );
 
 		// Dodaj prefiks [TEST] do tematu.
 		$subject = $this->prefix_test_subject( $subject );
@@ -376,8 +387,9 @@ class Ihumbak_WRS_Email_Sender {
 		}
 
 		// Krok 9 — Budowanie kontekstu, render, dispatch.
-		$raw_subject = (string) get_option( 'ihumbak_wrs_email_subject', '' );
-		$raw_body    = (string) get_option( 'ihumbak_wrs_email_body', '' );
+		$raw_subject  = (string) get_option( 'ihumbak_wrs_email_subject', '' );
+		$raw_body     = (string) get_option( 'ihumbak_wrs_email_body', '' );
+		$raw_heading  = (string) get_option( 'ihumbak_wrs_email_heading', '' );
 
 		// Temat renderowany z surowymi wartościami (nagłówek plain-text).
 		// Dla products_list i rating_links_list podstawiamy pusty ciąg — zapobiega
@@ -386,6 +398,14 @@ class Ihumbak_WRS_Email_Sender {
 		$subject_context['products_list']     = '';
 		$subject_context['rating_links_list'] = '';
 		$subject = Ihumbak_WRS_Email_Template::render( $raw_subject, $subject_context );
+
+		// Nagłówek wewnętrzny wiadomości renderowany z tym samym kontekstem co temat
+		// (plain-text, bez products_list/rating_links_list). Gdy pusty — użyj wartości domyślnej.
+		$raw_heading = trim( $raw_heading );
+		if ( '' === $raw_heading ) {
+			$raw_heading = $this->default_heading();
+		}
+		$heading = Ihumbak_WRS_Email_Template::render( $raw_heading, $subject_context );
 
 		// Treść renderowana z wartościami bezpiecznymi HTML.
 		// Skalary są escapowane przez esc_html()/esc_url(); listy produktów
@@ -403,6 +423,9 @@ class Ihumbak_WRS_Email_Sender {
 				__( 'Temat lub treść szablonu jest pusta — uzupełnij ustawienia.', 'ihumbak-woo-rating-stars' )
 			);
 		}
+
+		// Owijamy treść w szablon transakcyjny WooCommerce (jeśli dostępny).
+		$body = $this->wrap_with_wc_template( $body, $heading );
 
 		$sent = $this->dispatch_raw( $email, $subject, $body );
 
@@ -889,6 +912,78 @@ class Ihumbak_WRS_Email_Sender {
 	// -------------------------------------------------------------------------
 	// Helpery
 	// -------------------------------------------------------------------------
+
+	/**
+	 * Owija wyrenderowaną treść wiadomości w domyślny szablon transakcyjny WooCommerce.
+	 *
+	 * Preferuje metodę `apply_transactional_email_template()` (WC 3.7+, przyjmuje nagłówek
+	 * jako drugi argument). Gdy niedostępna, wywołuje sekwencję
+	 * `style_inline( wrap_message( $heading, $body_html ) )`. Gdy i ta ścieżka zawiedzie,
+	 * zwraca oryginalne `$body_html` jako bezpieczny fallback.
+	 *
+	 * Metoda jest chroniona przed wyjątkami — każdy `\Throwable` jest logowany (gdy
+	 * WP_DEBUG aktywne) i metoda zwraca niezmodyfikowane `$body_html`.
+	 *
+	 * Gdy WooCommerce jest niedostępne (`function_exists('WC')` zwraca false),
+	 * metoda natychmiast zwraca `$body_html` bez żadnej modyfikacji.
+	 *
+	 * @param string $body_html Wyrenderowana treść wiadomości HTML.
+	 * @param string $heading   Nagłówek widoczny wewnątrz wiadomości (nad treścią).
+	 * @return string Owinięta i ostylowana inline treść HTML lub oryginalne $body_html.
+	 */
+	private function wrap_with_wc_template( string $body_html, string $heading ): string {
+		if ( ! function_exists( 'WC' ) ) {
+			return $body_html;
+		}
+
+		$mailer = WC()->mailer();
+
+		if ( ! ( $mailer instanceof \WC_Emails ) ) {
+			return $body_html;
+		}
+
+		try {
+			// Preferowana ścieżka: apply_transactional_email_template() dostępna od WC 3.7.
+			// Przyjmuje ($content, $email_heading) i zwraca pełny HTML z inlinowanymi stylami.
+			if ( method_exists( $mailer, 'apply_transactional_email_template' ) ) {
+				return (string) $mailer->apply_transactional_email_template( $body_html, $heading );
+			}
+
+			// Ścieżka awaryjna: wrap_message() + style_inline() — dostępne we wszystkich
+			// wersjach WC obsługiwanych przez plugin (WC >= 6.0).
+			if ( method_exists( $mailer, 'wrap_message' ) && method_exists( $mailer, 'style_inline' ) ) {
+				$wrapped = $mailer->wrap_message( $heading, $body_html );
+				return (string) $mailer->style_inline( $wrapped );
+			}
+
+			// Ostatni fallback: samo wrap_message() bez inlinowania stylów.
+			if ( method_exists( $mailer, 'wrap_message' ) ) {
+				return (string) $mailer->wrap_message( $heading, $body_html );
+			}
+		} catch ( \Throwable $e ) {
+			$this->log_failure(
+				'wrap_with_wc_template: wyjątek podczas owijania szablonu WC',
+				array(
+					'error' => $e->getMessage(),
+					'file'  => $e->getFile(),
+					'line'  => $e->getLine(),
+				)
+			);
+		}
+
+		return $body_html;
+	}
+
+	/**
+	 * Zwraca domyślny nagłówek wewnętrzny wiadomości e-mail.
+	 *
+	 * Używany gdy opcja `ihumbak_wrs_email_heading` jest pusta.
+	 *
+	 * @return string Przetłumaczony domyślny nagłówek.
+	 */
+	private function default_heading(): string {
+		return __( 'Twoja opinia jest dla nas ważna', 'ihumbak-woo-rating-stars' );
+	}
 
 	/**
 	 * Prefiksuje temat wiadomości testowej ciągiem „[TEST] ".

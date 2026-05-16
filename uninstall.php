@@ -34,6 +34,7 @@ delete_option('ihumbak_wrs_email_skip_already_rated');
 delete_option('ihumbak_wrs_email_excluded_products');
 delete_option('ihumbak_wrs_email_excluded_categories');
 delete_option('ihumbak_wrs_email_subject');
+delete_option('ihumbak_wrs_email_heading');
 delete_option('ihumbak_wrs_email_body');
 delete_option('ihumbak_wrs_email_from_name');
 delete_option('ihumbak_wrs_email_from_email');
