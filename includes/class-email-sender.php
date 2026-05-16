@@ -71,9 +71,10 @@ class Ihumbak_WRS_Email_Sender {
 	 * dwa skalarne argumenty zamiast pojedynczej tablicy.
 	 *
 	 * Wykonuje pełny potok walidacji i reguł pomijania, buduje kontekst,
-	 * renderuje wiadomość i wywołuje dispatch_raw(). Wartość zwracana przez
-	 * process() jest celowo ignorowana — zachowanie AS-driven path pozostaje
-	 * niezmienione. Wszystkie wyjątki są przechwytywane.
+	 * renderuje wiadomość i wywołuje dispatch_raw(). Sama metoda jest `void`
+	 * i nie propaguje wyniku do Action Schedulera, ale wewnętrznie używa obiektu
+	 * wyniku zwróconego przez process() do uruchomienia hooka
+	 * `ihumbak_wrs_email_send_complete`. Wszystkie wyjątki są przechwytywane.
 	 *
 	 * @param int $order_id ID zamówienia.
 	 * @param int $step     Numer kroku sekwencji (0 = wiadomość początkowa).
@@ -82,7 +83,13 @@ class Ihumbak_WRS_Email_Sender {
 		$order_id = (int) $order_id;
 		$step     = (int) $step;
 
-		$result = null;
+		// Domyślny wynik zabezpieczający — jeśli sam blok catch rzuci wyjątek
+		// (teoretycznie możliwe), fire_send_complete_hook() i tak otrzyma poprawny
+		// obiekt zamiast TypeError dla null.
+		$result = Ihumbak_WRS_Email_Send_Result::failed(
+			Ihumbak_WRS_Email_Send_Result::REASON_EXCEPTION,
+			__( 'Wystąpił nieoczekiwany błąd podczas wysyłki.', 'ihumbak-woo-rating-stars' )
+		);
 
 		try {
 			$result = $this->process( $order_id, $step );
@@ -154,7 +161,7 @@ class Ihumbak_WRS_Email_Sender {
 	 *
 	 * WAŻNE: Metoda celowo NIE wywołuje process() — omija wszelkie reguły
 	 * pomijania, nie planuje zadań AS, nie zapisuje logów (nawet gdy #11 dostarczy
-	 * mechanizm logowania), nie uruchamia hooka `ihumbak_wrs_email_sent`.
+	 * mechanizm logowania), nie uruchamia hooka `ihumbak_wrs_email_send_complete`.
 	 * Test-sendy MUSZĄ pozostać bez żadnych efektów ubocznych w bazie danych.
 	 *
 	 * Kolejność rozwiązywania kontekstu:
@@ -212,18 +219,22 @@ class Ihumbak_WRS_Email_Sender {
 
 		// Zbuduj konteksty do renderowania szablonu.
 		if ( null !== $order ) {
-			$subject_context = $this->build_context( $order ) + array(
-				'products_list'     => '',
-				'rating_links_list' => '',
-			);
-			$html_context = $this->build_html_context( $order, $sample_items );
+			$subject_context                      = $this->build_context( $order );
+			// build_context() nie emituje products_list/rating_links_list, ale zapisujemy je
+			// jawnie pustym ciągiem — gwarantuje to, że żaden token nie wyrenderuje się
+			// dosłownie w temacie wiadomości, niezależnie od ewolucji build_context().
+			$subject_context['products_list']     = '';
+			$subject_context['rating_links_list'] = '';
+			$html_context                         = $this->build_html_context( $order, $sample_items );
 		} else {
-			$fake_context = $this->build_fake_context();
-			$subject_context = $fake_context + array(
-				'products_list'     => '',
-				'rating_links_list' => '',
-			);
-			$html_context = $fake_context;
+			$fake_context                          = $this->build_fake_context();
+			$subject_context                       = $fake_context;
+			// build_fake_context() emituje gotowy HTML dla products_list i rating_links_list
+			// (na potrzeby treści). W temacie nadpisujemy je pustym ciągiem, by uniknąć
+			// wycieku surowego HTML do nagłówka Subject.
+			$subject_context['products_list']      = '';
+			$subject_context['rating_links_list']  = '';
+			$html_context                          = $fake_context;
 		}
 
 		// Renderuj temat i treść.
@@ -263,8 +274,9 @@ class Ihumbak_WRS_Email_Sender {
 	 * Właściwy potok — walidacja, reguły pomijania, render, dispatch.
 	 *
 	 * Zmiana względem wersji pre-#8: metoda zwraca Ihumbak_WRS_Email_Send_Result
-	 * zamiast void. handle_send() ignoruje wartość zwracaną — brak zmiany
-	 * zachowania dla ścieżki AS-driven.
+	 * zamiast void. handle_send() pozostaje `void` względem Action Schedulera,
+	 * ale wewnętrznie konsumuje wynik do uruchomienia hooka
+	 * `ihumbak_wrs_email_send_complete` — brak zmiany zachowania dla ścieżki AS-driven.
 	 *
 	 * @param int $order_id ID zamówienia przekazane przez AS.
 	 * @param int $step     Numer kroku sekwencji.
@@ -370,10 +382,9 @@ class Ihumbak_WRS_Email_Sender {
 		// Temat renderowany z surowymi wartościami (nagłówek plain-text).
 		// Dla products_list i rating_links_list podstawiamy pusty ciąg — zapobiega
 		// to wyciekowi surowego HTML do tematu, gdy admin omyłkowo wstawi te tokeny.
-		$subject_context = $this->build_context( $order ) + array(
-			'products_list'     => '',
-			'rating_links_list' => '',
-		);
+		$subject_context                      = $this->build_context( $order );
+		$subject_context['products_list']     = '';
+		$subject_context['rating_links_list'] = '';
 		$subject = Ihumbak_WRS_Email_Template::render( $raw_subject, $subject_context );
 
 		// Treść renderowana z wartościami bezpiecznymi HTML.
@@ -396,6 +407,13 @@ class Ihumbak_WRS_Email_Sender {
 		$sent = $this->dispatch_raw( $email, $subject, $body );
 
 		if ( ! $sent ) {
+			$this->log_failure(
+				'wp_mail zwrócił false',
+				array(
+					'order_id' => $order_id,
+					'to'       => $email,
+				)
+			);
 			return Ihumbak_WRS_Email_Send_Result::failed(
 				Ihumbak_WRS_Email_Send_Result::REASON_WP_MAIL_FAILED,
 				__( 'wp_mail zwrócił false. Sprawdź konfigurację SMTP.', 'ihumbak-woo-rating-stars' )
@@ -761,8 +779,8 @@ class Ihumbak_WRS_Email_Sender {
 	 * WAŻNE DLA send_test(): Ta metoda jest używana zarówno przez process() jak i
 	 * send_test(). Nie zawiera żadnego logowania, nie wywołuje hooków — send_test()
 	 * MUSI pozostać wolny od efektów ubocznych. Gdy issue #11 dostarczy mechanizm
-	 * logowania oparty na hooku `ihumbak_wrs_email_sent`, ten hook MUSI być
-	 * wyzwalany wyłącznie z process(), nigdy z send_test().
+	 * logowania oparty na hooku `ihumbak_wrs_email_send_complete`, ten hook MUSI być
+	 * wyzwalany wyłącznie z process()/send_for_order(), nigdy z send_test().
 	 *
 	 * @param string $to        Adres odbiorcy.
 	 * @param string $subject   Wyrenderowany temat wiadomości.
@@ -790,18 +808,8 @@ class Ihumbak_WRS_Email_Sender {
 			remove_filter( 'wp_mail_content_type', $filter_cb );
 		}
 
-		// Diagnostyka — gdy wp_mail zwróci false (regresja przywrócona po #6).
-		// Logowanie jest debug-only (gated WP_DEBUG + WP_DEBUG_LOG), nie narusza
-		// kontraktu test-send „brak persistencji" — error_log nie zapisuje stanu w DB.
-		if ( ! $sent ) {
-			$this->log_failure(
-				'wp_mail zwrócił false',
-				array(
-					'to'      => $to,
-					'subject' => $subject,
-				)
-			);
-		}
+		// Logowanie „wp_mail zwrócił false" przeniesione do process() — tylko tam
+		// dostępne jest order_id, niezbędne do skutecznej diagnostyki.
 
 		return $sent;
 	}

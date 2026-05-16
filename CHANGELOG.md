@@ -19,8 +19,8 @@ All notable changes to this project will be documented in this file.
 - CSS (`assets/css/rating-widget.css`): new `@keyframes ihumbak-wrs-deep-link-pulse` animation and `.ihumbak-wrs-widget.ihumbak-wrs-deep-link-highlight` rule for the arrival highlight effect.
 
 ### Changed
-- `Ihumbak_WRS_Email_Sender::process()` now returns `Ihumbak_WRS_Email_Send_Result` (was void). `handle_send()` (AS-driven path) ignores the return value — no behavioral change for scheduled sends.
-- `Ihumbak_WRS_Email_Sender::process()` disambiguates the two consecutive empty-items checks: the first (after `get_items()`) reports `REASON_ALL_EXCLUDED`; the second (after `filter_excluded_items()`) also reports `REASON_ALL_EXCLUDED`; the third (after `filter_already_rated_items()`) reports `REASON_ALL_ALREADY_RATED`.
+- `Ihumbak_WRS_Email_Sender::process()` now returns `Ihumbak_WRS_Email_Send_Result` (was void). `handle_send()` (AS-driven) and `send_for_order()` (manual resend) consume the result internally to fire the new `ihumbak_wrs_email_send_complete` hook; Action Scheduler still receives `void` and behavior for scheduled retries is unchanged.
+- `Ihumbak_WRS_Email_Sender::process()` disambiguates the three consecutive empty-items checks: the first (after `get_items()`) reports `REASON_NO_ITEMS`; the second (after `filter_excluded_items()`) reports `REASON_ALL_EXCLUDED`; the third (after `filter_already_rated_items()`) reports `REASON_ALL_ALREADY_RATED`.
 - `Ihumbak_WRS_Email_Sender::dispatch()` refactored into `dispatch_raw(string $to, string $subject, string $body_html): bool` — no longer receives a `WC_Order` argument (removed implicit logging dependency). Used by both `process()` and `send_test()`.
 - New public methods on `Ihumbak_WRS_Email_Sender`: `send_for_order(int $order_id, int $step): Ihumbak_WRS_Email_Send_Result` and `send_test(string $recipient, ?int $sample_order_id): Ihumbak_WRS_Email_Send_Result`.
 - `admin/class-admin-email-settings.php`: `render_page()` now fires `do_action('ihumbak_wrs_after_email_settings_form')` after the closing `</form>` tag, enabling external injection of the test-send card.
