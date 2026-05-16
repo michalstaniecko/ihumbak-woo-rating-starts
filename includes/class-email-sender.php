@@ -219,14 +219,16 @@ class Ihumbak_WRS_Email_Sender {
 		}
 
 		// Zbuduj konteksty do renderowania szablonu.
+		// WAŻNE: $is_test = true blokuje auto-generowanie kuponów w trybie 'auto' —
+		// send_test() musi pozostać wolny od efektów ubocznych w bazie danych.
 		if ( null !== $order ) {
-			$subject_context                      = $this->build_context( $order );
+			$subject_context                      = $this->build_context( $order, true );
 			// build_context() nie emituje products_list/rating_links_list, ale zapisujemy je
 			// jawnie pustym ciągiem — gwarantuje to, że żaden token nie wyrenderuje się
 			// dosłownie w temacie wiadomości, niezależnie od ewolucji build_context().
 			$subject_context['products_list']     = '';
 			$subject_context['rating_links_list'] = '';
-			$html_context                         = $this->build_html_context( $order, $sample_items );
+			$html_context                         = $this->build_html_context( $order, $sample_items, true );
 		} else {
 			$fake_context                          = $this->build_fake_context();
 			$subject_context                       = $fake_context;
@@ -692,38 +694,83 @@ class Ihumbak_WRS_Email_Sender {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Zwraca surowy kod kuponu skonfigurowany w opcji ihumbak_wrs_email_coupon_id.
+	 * Zwraca surowy kod kuponu zgodnie z trybem ustawionym w opcji ihumbak_wrs_email_coupon_mode.
 	 *
-	 * Pobiera post_type 'shop_coupon' o podanym ID. Zwraca pusty ciąg gdy:
-	 * - Opcja nie jest ustawiona lub ma wartość 0 (brak kuponu).
-	 * - Post o danym ID nie istnieje, nie jest typu 'shop_coupon' lub nie jest opublikowany.
+	 * Tryby:
+	 * - 'none'  → zwraca pusty ciąg (brak kuponu).
+	 * - 'fixed' → odczytuje post 'shop_coupon' wskazany przez ihumbak_wrs_email_coupon_id.
+	 * - 'auto'  → deleguje do Ihumbak_WRS_Coupon_Generator::get_or_create_for_order().
+	 *             Wymaga przekazania $order; gdy $order === null, zwraca ''.
 	 *
-	 * Wartość post_title jest zwracana verbatim — WooCommerce zapisuje kody kuponów
-	 * małymi literami, więc nie ma potrzeby normalizacji.
+	 * Gdy $is_test === true, tryb 'auto' nie generuje kuponu — zwracany jest
+	 * przykładowy kod THX-DEMO9X4Q (prezentacja bez efektów ubocznych w DB).
 	 *
 	 * UWAGA: Metoda zwraca surowy (niezescapowany) ciąg. Wywołujący jest odpowiedzialny
 	 * za escapowanie przed użyciem w HTML (esc_html) lub dla tematu wiadomości (bezpieczny
 	 * jako plain-text).
 	 *
+	 * @since 1.5.0 Rozszerzona o parametry $order i $is_test; wcześniej bezparametryczna.
+	 *
+	 * @param \WC_Order|null $order   Zamówienie (wymagane dla trybu 'auto').
+	 * @param bool           $is_test True = tryb testowy — auto-generowanie zablokowane.
 	 * @return string Surowy kod kuponu lub pusty ciąg.
 	 */
-	private function resolve_coupon_code(): string {
-		$coupon_id = (int) get_option( 'ihumbak_wrs_email_coupon_id', 0 );
+	private function resolve_coupon_code( ?\WC_Order $order = null, bool $is_test = false ): string {
+		$mode = (string) get_option( 'ihumbak_wrs_email_coupon_mode', 'none' );
 
-		if ( 0 === $coupon_id ) {
+		if ( 'fixed' === $mode ) {
+			// Tryb 'fixed' — istniejące zachowanie: odczytaj ID z opcji.
+			$coupon_id = (int) get_option( 'ihumbak_wrs_email_coupon_id', 0 );
+
+			if ( 0 === $coupon_id ) {
+				return '';
+			}
+
+			$coupon_post = get_post( $coupon_id );
+
+			if (
+				$coupon_post instanceof \WP_Post
+				&& 'shop_coupon' === $coupon_post->post_type
+				&& 'publish' === $coupon_post->post_status
+			) {
+				return (string) $coupon_post->post_title;
+			}
+
 			return '';
 		}
 
-		$coupon_post = get_post( $coupon_id );
+		if ( 'auto' === $mode ) {
+			// Tryb testowy — zwróć przykładowy kod bez generowania kuponu.
+			if ( $is_test ) {
+				return 'THX-DEMO9X4Q';
+			}
 
-		if (
-			$coupon_post instanceof \WP_Post
-			&& 'shop_coupon' === $coupon_post->post_type
-			&& 'publish' === $coupon_post->post_status
-		) {
-			return (string) $coupon_post->post_title;
+			// Brak zamówienia — nie można wygenerować kuponu.
+			if ( null === $order ) {
+				return '';
+			}
+
+			$discount = (int) get_option( 'ihumbak_wrs_email_coupon_auto_discount', 10 );
+			$days     = (int) get_option( 'ihumbak_wrs_email_coupon_auto_validity_days', 30 );
+
+			try {
+				$generator = new Ihumbak_WRS_Coupon_Generator();
+				return $generator->get_or_create_for_order( $order, $discount, $days );
+			} catch ( \Throwable $e ) {
+				$this->log_failure(
+					'resolve_coupon_code (auto): wyjątek podczas generowania kuponu',
+					array(
+						'order_id' => $order->get_id(),
+						'error'    => $e->getMessage(),
+						'file'     => $e->getFile(),
+						'line'     => $e->getLine(),
+					)
+				);
+				return '';
+			}
 		}
 
+		// Tryb 'none' (lub nieznana wartość) — brak kuponu.
 		return '';
 	}
 
@@ -733,14 +780,17 @@ class Ihumbak_WRS_Email_Sender {
 	 * Wartości surowe (nie-HTML) — escaping odbywa się w build_html_context() przed
 	 * wywołaniem render() dla body lub jest pominięty dla subject (nagłówek plain-text).
 	 *
-	 * Klucz coupon_code jest rozwiązywany przez resolve_coupon_code() z opcji
-	 * ihumbak_wrs_email_coupon_id. Zwraca pusty ciąg gdy kupon nie jest skonfigurowany
-	 * lub skonfigurowany kupon nie istnieje / nie jest opublikowany.
+	 * Klucz coupon_code jest rozwiązywany przez resolve_coupon_code() — tryb
+	 * kuponu determinuje sposób pobrania/wygenerowania kodu.
+	 * Gdy $is_test === true, tryb 'auto' nie tworzy kuponu w bazie danych.
 	 *
-	 * @param \WC_Order $order Zamówienie.
+	 * @since 1.5.0 Rozszerzona o parametr $is_test.
+	 *
+	 * @param \WC_Order $order   Zamówienie.
+	 * @param bool      $is_test True = tryb testowy (blokuje auto-generowanie kuponu).
 	 * @return array<string,string> Kontekst surowy (bez HTML escaping).
 	 */
-	private function build_context( \WC_Order $order ): array {
+	private function build_context( \WC_Order $order, bool $is_test = false ): array {
 		$date_created = $order->get_date_created();
 		$order_date   = $date_created instanceof \WC_DateTime
 			? wc_format_datetime( $date_created )
@@ -754,7 +804,7 @@ class Ihumbak_WRS_Email_Sender {
 			'order_date'          => $order_date,
 			'site_name'           => get_bloginfo( 'name' ),
 			'site_url'            => home_url(),
-			'coupon_code'         => $this->resolve_coupon_code(),
+			'coupon_code'         => $this->resolve_coupon_code( $order, $is_test ),
 		);
 	}
 
@@ -764,15 +814,21 @@ class Ihumbak_WRS_Email_Sender {
 	 * Skalarne wartości z build_context() są escapowane przez esc_html()/esc_url().
 	 * Wartości products_list i rating_links_list są już bezpiecznym HTML wygenerowanym
 	 * przez Ihumbak_WRS_Email_Product_List — NIE należy ich owijać w esc_html().
-	 * coupon_code jest escapowany przez esc_html() — WooCommerce zapisuje post_title
-	 * kuponu małymi literami, znaki alfanumeryczne + '-'/'_' są bezpieczne w HTML.
+	 * coupon_code jest escapowany przez esc_html() — kody kuponów zawierają wyłącznie
+	 * alfanumeryczne znaki i '-', co jest bezpieczne w HTML.
 	 *
-	 * @param \WC_Order                 $order Zamówienie.
-	 * @param \WC_Order_Item_Product[]  $items Przefiltrowane pozycje zamówienia.
+	 * Gdy $is_test === true, tryb 'auto' nie tworzy kuponu w bazie danych (patrz
+	 * build_context()).
+	 *
+	 * @since 1.5.0 Rozszerzona o parametr $is_test.
+	 *
+	 * @param \WC_Order                 $order   Zamówienie.
+	 * @param \WC_Order_Item_Product[]  $items   Przefiltrowane pozycje zamówienia.
+	 * @param bool                      $is_test True = tryb testowy (blokuje auto-generowanie kuponu).
 	 * @return array<string,string> Kontekst gotowy do przekazania do silnika szablonów.
 	 */
-	private function build_html_context( \WC_Order $order, array $items ): array {
-		$context = $this->build_context( $order );
+	private function build_html_context( \WC_Order $order, array $items, bool $is_test = false ): array {
+		$context = $this->build_context( $order, $is_test );
 
 		return array(
 			'customer_name'       => esc_html( $context['customer_name'] ),
@@ -812,12 +868,21 @@ class Ihumbak_WRS_Email_Sender {
 			. '<li><a href="' . $rating_url . '">' . esc_html( $sample_product_label ) . '</a></li>' . "\n"
 			. '</ul>';
 
-		// Resolve coupon code — use configured coupon when available, fall back to a sample code.
-		// Verbatim post_title is used (WooCommerce lowercases coupon codes on save).
-		$resolved_coupon = $this->resolve_coupon_code();
-		$fake_coupon     = '' !== $resolved_coupon
-			? esc_html( $resolved_coupon )
-			: esc_html__( 'PRZYKLAD10', 'ihumbak-woo-rating-stars' );
+		// Resolve coupon code dla fake kontekstu (brak zamówienia — tryb testowy bez efektów ubocznych).
+		// Tryb 'auto': zwróć przykładowy kod wyglądający jak prawdziwy (bez generowania w DB).
+		// Tryb 'fixed': użyj skonfigurowanego kodu kuponu lub przykładowego PRZYKLAD10.
+		// Tryb 'none': pusty ciąg.
+		$coupon_mode = (string) get_option( 'ihumbak_wrs_email_coupon_mode', 'none' );
+		if ( 'auto' === $coupon_mode ) {
+			$fake_coupon = 'THX-DEMO9X4Q';
+		} elseif ( 'fixed' === $coupon_mode ) {
+			$resolved_coupon = $this->resolve_coupon_code( null, true );
+			$fake_coupon     = '' !== $resolved_coupon
+				? esc_html( $resolved_coupon )
+				: esc_html__( 'PRZYKLAD10', 'ihumbak-woo-rating-stars' );
+		} else {
+			$fake_coupon = '';
+		}
 
 		return array(
 			'customer_name'       => esc_html__( 'Jan Kowalski', 'ihumbak-woo-rating-stars' ),

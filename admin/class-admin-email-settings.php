@@ -34,6 +34,14 @@ class Ihumbak_WRS_Admin_Email_Settings {
     const PAGE_SLUG = 'ihumbak-wrs-email-settings';
 
     /**
+     * Hook suffix zwrócony przez add_submenu_page — używany do warunkowego
+     * ładowania assetów wyłącznie na naszej podstronie.
+     *
+     * @var string
+     */
+    private $hook_suffix = '';
+
+    /**
      * Konstruktor — rejestracja hooków.
      *
      * Priorytet 20 przy admin_menu zapewnia, że menu nadrzędne
@@ -42,19 +50,39 @@ class Ihumbak_WRS_Admin_Email_Settings {
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'add_submenu' ), 20 );
         add_action( 'admin_init', array( $this, 'register_settings' ) );
+        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
     }
 
     /**
      * Dodaje podstronę "Email Review Requests" do menu Quick Ratings.
      */
     public function add_submenu() {
-        add_submenu_page(
+        $this->hook_suffix = (string) add_submenu_page(
             'ihumbak-wrs-ratings',
             __( 'Email Review Requests', 'ihumbak-woo-rating-stars' ),
             __( 'Email Review Requests', 'ihumbak-woo-rating-stars' ),
             'manage_woocommerce',
             self::PAGE_SLUG,
             array( $this, 'render_page' )
+        );
+    }
+
+    /**
+     * Ładuje skrypty admina wyłącznie na podstronie ustawień e-maili.
+     *
+     * @param string $hook_suffix Hook suffix bieżącej strony admina.
+     */
+    public function enqueue_assets( $hook_suffix ) {
+        if ( '' === $this->hook_suffix || $hook_suffix !== $this->hook_suffix ) {
+            return;
+        }
+
+        wp_enqueue_script(
+            'ihumbak-wrs-admin-coupon-mode',
+            IHUMBAK_WRS_PLUGIN_URL . 'assets/js/admin-coupon-mode.js',
+            array(),
+            IHUMBAK_WRS_VERSION,
+            true
         );
     }
 
@@ -205,6 +233,36 @@ class Ihumbak_WRS_Admin_Email_Settings {
 
         register_setting(
             self::OPTION_GROUP,
+            'ihumbak_wrs_email_coupon_mode',
+            array(
+                'type'              => 'string',
+                'default'           => 'none',
+                'sanitize_callback' => array( $this, 'sanitize_coupon_mode' ),
+            )
+        );
+
+        register_setting(
+            self::OPTION_GROUP,
+            'ihumbak_wrs_email_coupon_auto_discount',
+            array(
+                'type'              => 'integer',
+                'default'           => 10,
+                'sanitize_callback' => array( $this, 'sanitize_coupon_auto_discount' ),
+            )
+        );
+
+        register_setting(
+            self::OPTION_GROUP,
+            'ihumbak_wrs_email_coupon_auto_validity_days',
+            array(
+                'type'              => 'integer',
+                'default'           => 30,
+                'sanitize_callback' => array( $this, 'sanitize_coupon_auto_validity_days' ),
+            )
+        );
+
+        register_setting(
+            self::OPTION_GROUP,
             'ihumbak_wrs_email_followups',
             array(
                 'type'              => 'array',
@@ -335,12 +393,11 @@ class Ihumbak_WRS_Admin_Email_Settings {
         );
 
         add_settings_field(
-            'ihumbak_wrs_email_coupon_id',
+            'ihumbak_wrs_email_coupon_mode',
             __( 'Kupon dla klienta / Customer coupon', 'ihumbak-woo-rating-stars' ),
-            array( $this, 'render_coupon_id' ),
+            array( $this, 'render_coupon_mode_field' ),
             self::PAGE_SLUG,
-            'ihumbak_wrs_email_content',
-            array( 'label_for' => 'ihumbak_wrs_email_coupon_id' )
+            'ihumbak_wrs_email_content'
         );
 
         add_settings_field(
@@ -587,6 +644,76 @@ class Ihumbak_WRS_Admin_Email_Settings {
         return '';
     }
 
+    /**
+     * Sanitizuje tryb kuponu.
+     *
+     * Akceptuje wyłącznie wartości z białej listy: 'none', 'fixed', 'auto'.
+     * Każda inna wartość jest sprowadzana do 'none'.
+     *
+     * @since 1.5.0
+     *
+     * @param mixed $value Surowa wartość z formularza.
+     * @return string Prawidłowy tryb kuponu.
+     */
+    public function sanitize_coupon_mode( $value ) {
+        $allowed = array( 'none', 'fixed', 'auto' );
+        $value   = sanitize_key( (string) $value );
+
+        if ( in_array( $value, $allowed, true ) ) {
+            return $value;
+        }
+
+        return 'none';
+    }
+
+    /**
+     * Sanitizuje procent rabatu kuponu auto (1–100).
+     *
+     * @since 1.5.0
+     *
+     * @param mixed $value Surowa wartość z formularza.
+     * @return int Procent rabatu z zakresu 1–100.
+     */
+    public function sanitize_coupon_auto_discount( $value ) {
+        $int     = absint( $value );
+        $clamped = min( 100, max( 1, $int ) );
+
+        if ( $int !== $clamped ) {
+            add_settings_error(
+                'ihumbak_wrs_email_coupon_auto_discount',
+                'discount_clamped',
+                __( 'Procent rabatu kuponu został ograniczony do zakresu 1–100.', 'ihumbak-woo-rating-stars' ),
+                'warning'
+            );
+        }
+
+        return $clamped;
+    }
+
+    /**
+     * Sanitizuje liczbę dni ważności kuponu auto (1–365).
+     *
+     * @since 1.5.0
+     *
+     * @param mixed $value Surowa wartość z formularza.
+     * @return int Liczba dni z zakresu 1–365.
+     */
+    public function sanitize_coupon_auto_validity_days( $value ) {
+        $int     = absint( $value );
+        $clamped = min( 365, max( 1, $int ) );
+
+        if ( $int !== $clamped ) {
+            add_settings_error(
+                'ihumbak_wrs_email_coupon_auto_validity_days',
+                'validity_days_clamped',
+                __( 'Liczba dni ważności kuponu została ograniczona do zakresu 1–365.', 'ihumbak-woo-rating-stars' ),
+                'warning'
+            );
+        }
+
+        return $clamped;
+    }
+
     /* ----------------------------------------------------------------
      *  Renderery sekcji i pól
      * ---------------------------------------------------------------- */
@@ -604,7 +731,7 @@ class Ihumbak_WRS_Admin_Email_Settings {
             'products_list'       => __( 'lista produktów z zamówienia', 'ihumbak-woo-rating-stars' ),
             'rating_links_list'   => __( 'lista linków do oceny produktów', 'ihumbak-woo-rating-stars' ),
             'site_name'           => __( 'nazwa sklepu', 'ihumbak-woo-rating-stars' ),
-            'coupon_code'         => __( 'kod kuponu (opcjonalny)', 'ihumbak-woo-rating-stars' ),
+            'coupon_code'         => __( 'kod kuponu (stały lub auto-generowany / fixed or auto-generated)', 'ihumbak-woo-rating-stars' ),
         );
 
         echo '<p>' . esc_html__( 'Dostępne placeholdery (możesz ich użyć w temacie i treści):', 'ihumbak-woo-rating-stars' ) . '</p>';
@@ -842,65 +969,130 @@ class Ihumbak_WRS_Admin_Email_Settings {
     }
 
     /**
-     * Renderuje selektor kuponu przypisywanego do wiadomości e-mail.
+     * Renderuje złożone pole wyboru trybu kuponu z podpanelami.
      *
-     * Wyświetla listę opublikowanych kuponów WooCommerce (post_type 'shop_coupon').
-     * Gdy zapisane ID nie odpowiada żadnemu opublikowanemu kuponowi (kupon usunięty
-     * lub w stanie draft), selektor pokazuje "— brak / none —" jako aktywny wybór,
-     * ale w opcji nadal przechowywane jest stare ID — zostanie ono ponownie dopasowane
-     * jeśli kupon wróci do statusu 'publish'. Nadpisanie następuje dopiero przy zapisie
-     * formularza.
+     * Zawiera:
+     * - Selektor trybu (radio): none / fixed / auto.
+     * - Podpanel trybu 'fixed': istniejący selektor kuponów WooCommerce.
+     * - Podpanel trybu 'auto': pola discount_percent i validity_days.
      *
-     * Brak paginacji ani lazy-load — typowy sklep posiada mniej niż 100 kuponów.
-     * W razie potrzeby można rozważyć autocomplete Select2 w przyszłości.
+     * Widoczność podpaneli sterowana jest waniliowym JavaScriptem (bez jQuery).
+     * Backend odczytuje wszystkie trzy opcje niezależnie od wybranego trybu.
      *
-     * Kupon NIE jest automatycznie stosowany do zamówienia — klient musi wpisać kod
-     * ręcznie przy kasie. Placeholder {coupon_code} jedynie wstawia kod do treści emaila.
+     * @since 1.5.0
      */
-    public function render_coupon_id() {
-        $value = (int) get_option( 'ihumbak_wrs_email_coupon_id', 0 );
+    public function render_coupon_mode_field() {
+        $mode           = (string) get_option( 'ihumbak_wrs_email_coupon_mode', 'none' );
+        $coupon_id      = (int) get_option( 'ihumbak_wrs_email_coupon_id', 0 );
+        $auto_discount  = (int) get_option( 'ihumbak_wrs_email_coupon_auto_discount', 10 );
+        $auto_days      = (int) get_option( 'ihumbak_wrs_email_coupon_auto_validity_days', 30 );
 
-        if ( ! post_type_exists( 'shop_coupon' ) ) {
-            // Disabled select nie jest wysyłany przy submit (HTML spec); dodatkowy
-            // ukryty input gwarantuje, że zapisanie ustawień przy nieaktywnym WC
-            // nie wyzeruje istniejącej wartości — przekazujemy zapisane ID 1:1.
-            ?>
-            <input type="hidden" name="ihumbak_wrs_email_coupon_id" value="<?php echo esc_attr( (int) $value ); ?>" />
-            <select id="ihumbak_wrs_email_coupon_id" disabled>
-                <option value="0"><?php esc_html_e( '— brak / none —', 'ihumbak-woo-rating-stars' ); ?></option>
-            </select>
-            <p class="description">
-                <?php esc_html_e( 'WooCommerce nie jest aktywne — lista kuponów jest niedostępna.', 'ihumbak-woo-rating-stars' ); ?>
-            </p>
-            <?php
-            return;
+        // Pobierz opublikowane kupony dla trybu 'fixed'.
+        $coupons      = array();
+        $wc_available = post_type_exists( 'shop_coupon' );
+
+        if ( $wc_available ) {
+            $coupons = get_posts(
+                array(
+                    'post_type'        => 'shop_coupon',
+                    'post_status'      => 'publish',
+                    'posts_per_page'   => -1,
+                    'orderby'          => 'title',
+                    'order'            => 'ASC',
+                    'no_found_rows'    => true,
+                    'suppress_filters' => false,
+                )
+            );
         }
 
-        $coupons = get_posts(
-            array(
-                'post_type'        => 'shop_coupon',
-                'post_status'      => 'publish',
-                'posts_per_page'   => -1,
-                'orderby'          => 'title',
-                'order'            => 'ASC',
-                'no_found_rows'    => true,
-                'suppress_filters' => false,
-            )
-        );
+        $field_id = 'ihumbak_wrs_email_coupon_mode';
         ?>
-        <select id="ihumbak_wrs_email_coupon_id" name="ihumbak_wrs_email_coupon_id">
-            <option value="0" <?php selected( 0, $value ); ?>>
-                <?php esc_html_e( '— brak / none —', 'ihumbak-woo-rating-stars' ); ?>
-            </option>
-            <?php foreach ( $coupons as $coupon ) : ?>
-                <option value="<?php echo esc_attr( (int) $coupon->ID ); ?>" <?php selected( (int) $coupon->ID, $value ); ?>>
-                    <?php echo esc_html( $coupon->post_title ); ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
-        <p class="description">
-            <?php esc_html_e( 'Tylko opublikowane kupony są widoczne na liście. Pusty wybór wyłącza placeholder. Kupon nie jest stosowany automatycznie — klient musi wpisać kod ręcznie przy kasie. / Only published coupons are listed. Empty selection disables the placeholder. The coupon is not applied automatically — the customer must enter it at checkout.', 'ihumbak-woo-rating-stars' ); ?>
-        </p>
+        <fieldset>
+            <legend class="screen-reader-text">
+                <?php esc_html_e( 'Tryb kuponu', 'ihumbak-woo-rating-stars' ); ?>
+            </legend>
+
+            <?php /* Radio: none */ ?>
+            <label>
+                <input type="radio" name="ihumbak_wrs_email_coupon_mode"
+                       id="<?php echo esc_attr( $field_id ); ?>_none"
+                       value="none" <?php checked( $mode, 'none' ); ?> />
+                <?php esc_html_e( 'Brak kuponu / No coupon', 'ihumbak-woo-rating-stars' ); ?>
+            </label><br />
+
+            <?php /* Radio: fixed */ ?>
+            <label>
+                <input type="radio" name="ihumbak_wrs_email_coupon_mode"
+                       id="<?php echo esc_attr( $field_id ); ?>_fixed"
+                       value="fixed" <?php checked( $mode, 'fixed' ); ?> />
+                <?php esc_html_e( 'Stały kupon / Fixed coupon', 'ihumbak-woo-rating-stars' ); ?>
+            </label><br />
+
+            <?php /* Podpanel trybu 'fixed' */ ?>
+            <div id="ihumbak-wrs-coupon-subpanel-fixed"
+                 style="margin: 8px 0 8px 24px; <?php echo 'fixed' !== $mode ? 'display:none;' : ''; ?>">
+                <?php if ( ! $wc_available ) : ?>
+                    <input type="hidden" name="ihumbak_wrs_email_coupon_id"
+                           value="<?php echo esc_attr( (string) $coupon_id ); ?>" />
+                    <select id="ihumbak_wrs_email_coupon_id" disabled>
+                        <option value="0"><?php esc_html_e( '— brak / none —', 'ihumbak-woo-rating-stars' ); ?></option>
+                    </select>
+                    <p class="description">
+                        <?php esc_html_e( 'WooCommerce nie jest aktywne — lista kuponów jest niedostępna.', 'ihumbak-woo-rating-stars' ); ?>
+                    </p>
+                <?php else : ?>
+                    <select id="ihumbak_wrs_email_coupon_id" name="ihumbak_wrs_email_coupon_id">
+                        <option value="0" <?php selected( 0, $coupon_id ); ?>>
+                            <?php esc_html_e( '— brak / none —', 'ihumbak-woo-rating-stars' ); ?>
+                        </option>
+                        <?php foreach ( $coupons as $coupon ) : ?>
+                            <option value="<?php echo esc_attr( (string) $coupon->ID ); ?>"
+                                <?php selected( (int) $coupon->ID, $coupon_id ); ?>>
+                                <?php echo esc_html( $coupon->post_title ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="description">
+                        <?php esc_html_e( 'Tylko opublikowane kupony. Kupon nie jest stosowany automatycznie — klient musi wpisać kod ręcznie przy kasie. / Only published coupons. Not applied automatically — the customer must enter it at checkout.', 'ihumbak-woo-rating-stars' ); ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+
+            <?php /* Radio: auto */ ?>
+            <label>
+                <input type="radio" name="ihumbak_wrs_email_coupon_mode"
+                       id="<?php echo esc_attr( $field_id ); ?>_auto"
+                       value="auto" <?php checked( $mode, 'auto' ); ?> />
+                <?php esc_html_e( 'Auto-generowany kupon / Auto-generated coupon', 'ihumbak-woo-rating-stars' ); ?>
+            </label>
+
+            <?php /* Podpanel trybu 'auto' */ ?>
+            <div id="ihumbak-wrs-coupon-subpanel-auto"
+                 style="margin: 8px 0 8px 24px; <?php echo 'auto' !== $mode ? 'display:none;' : ''; ?>">
+                <label for="ihumbak_wrs_email_coupon_auto_discount">
+                    <?php esc_html_e( 'Rabat (%) / Discount (%):', 'ihumbak-woo-rating-stars' ); ?>
+                </label>
+                <input type="number" id="ihumbak_wrs_email_coupon_auto_discount"
+                       name="ihumbak_wrs_email_coupon_auto_discount"
+                       value="<?php echo esc_attr( (string) $auto_discount ); ?>"
+                       min="1" max="100" step="1" class="small-text" />
+
+                <span style="margin-left: 16px;">
+                    <label for="ihumbak_wrs_email_coupon_auto_validity_days">
+                        <?php esc_html_e( 'Ważność (dni) / Validity (days):', 'ihumbak-woo-rating-stars' ); ?>
+                    </label>
+                    <input type="number" id="ihumbak_wrs_email_coupon_auto_validity_days"
+                           name="ihumbak_wrs_email_coupon_auto_validity_days"
+                           value="<?php echo esc_attr( (string) $auto_days ); ?>"
+                           min="1" max="365" step="1" class="small-text" />
+                </span>
+
+                <p class="description">
+                    <?php esc_html_e( 'Jeden kupon jednorazowego użycia tworzony automatycznie per zamówienie. Kod w formacie THX-XXXXXXXX. Kupon jest zbywalny — klient może przekazać go znajomemu. / One single-use coupon created automatically per order. Code format: THX-XXXXXXXX. Transferable — customer may share it.', 'ihumbak-woo-rating-stars' ); ?>
+                </p>
+            </div>
+
+        </fieldset>
         <?php
     }
 
