@@ -183,6 +183,16 @@ class Ihumbak_WRS_Admin_Email_Settings {
             )
         );
 
+        register_setting(
+            self::OPTION_GROUP,
+            'ihumbak_wrs_email_followups',
+            array(
+                'type'              => 'array',
+                'default'           => array(),
+                'sanitize_callback' => array( $this, 'sanitize_followups' ),
+            )
+        );
+
         $this->add_sections_and_fields();
     }
 
@@ -321,6 +331,22 @@ class Ihumbak_WRS_Admin_Email_Settings {
             'ihumbak_wrs_email_content',
             array( 'label_for' => 'ihumbak_wrs_email_reply_to' )
         );
+
+        // Sekcja 4: Przypomnienia (follow-up).
+        add_settings_section(
+            'ihumbak_wrs_email_followups',
+            __( 'Przypomnienia (follow-up) / Follow-up reminders', 'ihumbak-woo-rating-stars' ),
+            array( $this, 'render_followups_section_intro' ),
+            self::PAGE_SLUG
+        );
+
+        add_settings_field(
+            'ihumbak_wrs_email_followups',
+            __( 'Kolejne przypomnienia / Scheduled reminders', 'ihumbak-woo-rating-stars' ),
+            array( $this, 'render_followups' ),
+            self::PAGE_SLUG,
+            'ihumbak_wrs_email_followups'
+        );
     }
 
     /* ----------------------------------------------------------------
@@ -417,6 +443,76 @@ class Ihumbak_WRS_Admin_Email_Settings {
         $ids = array_filter( $ids ); // usuwa zera.
 
         return array_values( array_unique( $ids ) );
+    }
+
+    /**
+     * Sanitizuje tablicę konfiguracji przypomnień follow-up.
+     *
+     * Akceptuje tablicę o maksymalnie MAX_FOLLOWUPS wpisach. Każdy wpis musi
+     * zawierać klucz `delay_days` z liczbą całkowitą z zakresu 1–365. Wpisy
+     * niespełniające tego wymagania są pomijane. Nadmiarowe wpisy (ponad limit)
+     * są odcinane z komunikatem błędu.
+     *
+     * @since 1.2.0
+     *
+     * @param mixed $value Surowa wartość z formularza (oczekiwana tablica).
+     * @return array<int,array{delay_days:int}>
+     */
+    public function sanitize_followups( $value ) {
+        if ( ! is_array( $value ) ) {
+            $value = array();
+        }
+
+        // Upewnij się, że klucze są sekwencyjne (bez luk po usunięciu wierszy).
+        $value = array_values( $value );
+
+        $max = class_exists( 'Ihumbak_WRS_Email_Scheduler' )
+            ? Ihumbak_WRS_Email_Scheduler::MAX_FOLLOWUPS
+            : 3;
+
+        // Przytnij do maksymalnej dozwolonej liczby przypomnień.
+        if ( count( $value ) > $max ) {
+            $value = array_slice( $value, 0, $max );
+            add_settings_error(
+                'ihumbak_wrs_email_followups',
+                'followups_capped',
+                sprintf(
+                    /* translators: %d: maksymalna liczba przypomnień */
+                    __( 'Liczba przypomnień została ograniczona do %d.', 'ihumbak-woo-rating-stars' ),
+                    $max
+                ),
+                'warning'
+            );
+        }
+
+        $clean = array();
+
+        foreach ( $value as $index => $entry ) {
+            if ( ! is_array( $entry ) ) {
+                continue;
+            }
+
+            $raw_days   = isset( $entry['delay_days'] ) ? (int) $entry['delay_days'] : 0;
+            $delay_days = max( 1, min( 365, $raw_days ) );
+
+            if ( $raw_days !== $delay_days ) {
+                add_settings_error(
+                    'ihumbak_wrs_email_followups',
+                    'followup_delay_clamped_' . $index,
+                    sprintf(
+                        /* translators: 1: numer przypomnienia (1-based), 2: oryginalna wartość */
+                        __( 'Opóźnienie przypomnienia #%1$d zostało ograniczone do zakresu 1–365 (podano: %2$d).', 'ihumbak-woo-rating-stars' ),
+                        $index + 1,
+                        $raw_days
+                    ),
+                    'warning'
+                );
+            }
+
+            $clean[] = array( 'delay_days' => $delay_days );
+        }
+
+        return $clean;
     }
 
     /**
@@ -714,6 +810,197 @@ class Ihumbak_WRS_Admin_Email_Settings {
         <p class="description">
             <?php esc_html_e( 'Pozostaw puste, aby użyć domyślnych ustawień WordPressa.', 'ihumbak-woo-rating-stars' ); ?>
         </p>
+        <?php
+    }
+
+    /**
+     * Wyświetla wprowadzenie do sekcji "Przypomnienia (follow-up)".
+     *
+     * @since 1.2.0
+     */
+    public function render_followups_section_intro() {
+        echo '<p>' . esc_html__( 'Opcjonalne przypomnienia wysyłane po e-mailu początkowym. Każde przypomnienie korzysta z tego samego szablonu (temat i treść) i niezależnie sprawdza reguły pomijania — np. jeśli klient ocenił produkty po kroku 0, krok 1 zostanie automatycznie pominięty.', 'ihumbak-woo-rating-stars' ) . '</p>';
+        echo '<p>' . esc_html__( 'Opóźnienie każdego przypomnienia liczone jest od momentu poprzedniej wysyłki (model względny). Możliwe 0–3 wpisy.', 'ihumbak-woo-rating-stars' ) . '</p>';
+    }
+
+    /**
+     * Renderuje repeater przypomnień follow-up.
+     *
+     * Wyświetla tabelę istniejących wpisów z polami opóźnienia oraz przyciskami
+     * zarządzania (dodaj, usuń, przesuń w górę/dół). Sterowanie realizowane
+     * jest przez wbudowany, waniliowy JavaScript (bez jQuery).
+     *
+     * @since 1.2.0
+     */
+    public function render_followups() {
+        $followups = get_option( 'ihumbak_wrs_email_followups', array() );
+        if ( ! is_array( $followups ) ) {
+            $followups = array();
+        }
+        $followups = array_values( $followups );
+
+        $max = class_exists( 'Ihumbak_WRS_Email_Scheduler' )
+            ? Ihumbak_WRS_Email_Scheduler::MAX_FOLLOWUPS
+            : 3;
+
+        ?>
+        <div id="ihumbak-wrs-followups-wrap">
+            <table id="ihumbak-wrs-followups-table" class="widefat striped" style="max-width:520px;">
+                <thead>
+                    <tr>
+                        <th style="width:3em;"><?php esc_html_e( '#', 'ihumbak-woo-rating-stars' ); ?></th>
+                        <th><?php esc_html_e( 'Opóźnienie (dni) / Delay (days)', 'ihumbak-woo-rating-stars' ); ?></th>
+                        <th><?php esc_html_e( 'Akcje / Actions', 'ihumbak-woo-rating-stars' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody id="ihumbak-wrs-followups-body">
+                    <?php foreach ( $followups as $i => $entry ) :
+                        $delay = isset( $entry['delay_days'] ) ? (int) $entry['delay_days'] : 7;
+                        ?>
+                        <tr class="ihumbak-wrs-followup-row">
+                            <td class="ihumbak-wrs-followup-num"><?php echo esc_html( (string) ( $i + 1 ) ); ?></td>
+                            <td>
+                                <input type="number"
+                                    name="ihumbak_wrs_email_followups[<?php echo esc_attr( (string) $i ); ?>][delay_days]"
+                                    value="<?php echo esc_attr( (string) $delay ); ?>"
+                                    min="1" max="365" step="1" class="small-text"
+                                    aria-label="<?php esc_attr_e( 'Opóźnienie w dniach', 'ihumbak-woo-rating-stars' ); ?>" />
+                            </td>
+                            <td>
+                                <button type="button" class="button ihumbak-wrs-move-up" aria-label="<?php esc_attr_e( 'Przesuń w górę', 'ihumbak-woo-rating-stars' ); ?>">&uarr;</button>
+                                <button type="button" class="button ihumbak-wrs-move-down" aria-label="<?php esc_attr_e( 'Przesuń w dół', 'ihumbak-woo-rating-stars' ); ?>">&darr;</button>
+                                <button type="button" class="button ihumbak-wrs-remove-row" aria-label="<?php esc_attr_e( 'Usuń', 'ihumbak-woo-rating-stars' ); ?>"><?php esc_html_e( 'Usuń / Remove', 'ihumbak-woo-rating-stars' ); ?></button>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <p>
+                <button type="button" id="ihumbak-wrs-add-followup" class="button button-secondary"
+                    <?php echo count( $followups ) >= $max ? 'disabled="disabled"' : ''; ?>>
+                    <?php esc_html_e( 'Dodaj przypomnienie / Add reminder', 'ihumbak-woo-rating-stars' ); ?>
+                </button>
+                <span id="ihumbak-wrs-followups-limit-info" style="margin-left:8px;color:#666;">
+                    <?php
+                    echo esc_html(
+                        sprintf(
+                            /* translators: %d: maksymalna liczba przypomnień */
+                            __( 'Maksimum: %d przypomnienia.', 'ihumbak-woo-rating-stars' ),
+                            $max
+                        )
+                    );
+                    ?>
+                </span>
+            </p>
+
+            <p class="description">
+                <?php esc_html_e( 'Opóźnienie jest liczone względem daty poprzedniej wysyłki w sekwencji. Wszystkie kroki używają tego samego szablonu tematu i treści wiadomości.', 'ihumbak-woo-rating-stars' ); ?>
+            </p>
+        </div>
+
+        <template id="ihumbak-wrs-followup-row-tpl">
+            <tr class="ihumbak-wrs-followup-row">
+                <td class="ihumbak-wrs-followup-num"></td>
+                <td>
+                    <input type="number"
+                        name=""
+                        value="7"
+                        min="1" max="365" step="1" class="small-text"
+                        aria-label="<?php esc_attr_e( 'Opóźnienie w dniach', 'ihumbak-woo-rating-stars' ); ?>" />
+                </td>
+                <td>
+                    <button type="button" class="button ihumbak-wrs-move-up" aria-label="<?php esc_attr_e( 'Przesuń w górę', 'ihumbak-woo-rating-stars' ); ?>">&uarr;</button>
+                    <button type="button" class="button ihumbak-wrs-move-down" aria-label="<?php esc_attr_e( 'Przesuń w dół', 'ihumbak-woo-rating-stars' ); ?>">&darr;</button>
+                    <button type="button" class="button ihumbak-wrs-remove-row" aria-label="<?php esc_attr_e( 'Usuń', 'ihumbak-woo-rating-stars' ); ?>"><?php esc_html_e( 'Usuń / Remove', 'ihumbak-woo-rating-stars' ); ?></button>
+                </td>
+            </tr>
+        </template>
+
+        <script>
+        (function () {
+            'use strict';
+
+            var MAX_ROWS    = <?php echo (int) $max; ?>;
+            var wrap        = document.getElementById( 'ihumbak-wrs-followups-wrap' );
+            var tbody       = document.getElementById( 'ihumbak-wrs-followups-body' );
+            var addBtn      = document.getElementById( 'ihumbak-wrs-add-followup' );
+            var tpl         = document.getElementById( 'ihumbak-wrs-followup-row-tpl' );
+
+            /**
+             * Przenumerowuje wiersze i aktualizuje atrybuty `name` pól input.
+             */
+            function reindex() {
+                var rows = tbody.querySelectorAll( '.ihumbak-wrs-followup-row' );
+                rows.forEach( function ( row, idx ) {
+                    var numCell = row.querySelector( '.ihumbak-wrs-followup-num' );
+                    if ( numCell ) {
+                        numCell.textContent = idx + 1;
+                    }
+                    var input = row.querySelector( 'input[type="number"]' );
+                    if ( input ) {
+                        input.name = 'ihumbak_wrs_email_followups[' + idx + '][delay_days]';
+                    }
+                } );
+
+                addBtn.disabled = ( rows.length >= MAX_ROWS );
+            }
+
+            /**
+             * Zamienia miejscami dwa sąsiednie wiersze.
+             *
+             * @param {HTMLElement} rowA Wiersz do przesunięcia w górę.
+             * @param {HTMLElement} rowB Wiersz do przesunięcia w dół.
+             */
+            function swapRows( rowA, rowB ) {
+                tbody.insertBefore( rowA, rowB );
+                reindex();
+            }
+
+            // Obsługa kliknięć delegowanych na tbody.
+            tbody.addEventListener( 'click', function ( e ) {
+                var btn = e.target;
+                if ( ! btn || btn.tagName !== 'BUTTON' ) {
+                    return;
+                }
+
+                var row = btn.closest( '.ihumbak-wrs-followup-row' );
+                if ( ! row ) {
+                    return;
+                }
+
+                if ( btn.classList.contains( 'ihumbak-wrs-remove-row' ) ) {
+                    row.remove();
+                    reindex();
+                } else if ( btn.classList.contains( 'ihumbak-wrs-move-up' ) ) {
+                    var prev = row.previousElementSibling;
+                    if ( prev && prev.classList.contains( 'ihumbak-wrs-followup-row' ) ) {
+                        swapRows( row, prev );
+                    }
+                } else if ( btn.classList.contains( 'ihumbak-wrs-move-down' ) ) {
+                    var next = row.nextElementSibling;
+                    if ( next && next.classList.contains( 'ihumbak-wrs-followup-row' ) ) {
+                        swapRows( next, row );
+                    }
+                }
+            } );
+
+            // Obsługa przycisku "Dodaj przypomnienie".
+            addBtn.addEventListener( 'click', function () {
+                var rows = tbody.querySelectorAll( '.ihumbak-wrs-followup-row' );
+                if ( rows.length >= MAX_ROWS ) {
+                    return;
+                }
+
+                var clone = document.importNode( tpl.content, true );
+                tbody.appendChild( clone );
+                reindex();
+            } );
+
+            // Inicjalizacja (pierwsze przenumerowanie po wyrenderowaniu PHP).
+            reindex();
+        }());
+        </script>
         <?php
     }
 

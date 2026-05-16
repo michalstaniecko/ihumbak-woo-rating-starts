@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Opcja `ihumbak_wrs_email_followups` umozliwiajaca konfiguracje 0-3 przypomnien (follow-up) po wysylce poczatkowej. Kazde przypomnienie ma wlasne opoznienie (dni) i niezaleznie respektuje reguly pomijania (#9).
+- Nowa klasa `Ihumbak_WRS_Email_Followup_Scheduler` nasluchujaca `ihumbak_wrs_email_send_complete` i planujaca kolejny krok przez Action Scheduler (#9).
+- UI w ustawieniach: sekcja "Przypomnienia (follow-up)" z repeaterem 0-3 wpisow (dodaj/usun/zmien kolejnosc), realizowanym przez waniliowy JavaScript (#9).
+
+### Changed
+- `Ihumbak_WRS_Email_Scheduler::STEPS` rozszerzony z `[0]` do `[0, 1, 2, 3]`; dodano stala `MAX_FOLLOWUPS = 3` i statyczna metode `schedule_followup()`. Anulowanie wysylek przy zwrocie/anulowaniu zamowienia czysci rowniez zaplanowane przypomnienia (kroki 1-3).
+
+---
+
+### Added (previous unreleased)
 - New admin tool: test email button on the Email Review Requests settings page. Sends a rendered preview of the current subject/body template to a configurable recipient (defaults to the currently logged-in user). Uses the most recent completed order as sample context, falls back to a hardcoded fake context when no completed orders exist. Requires `manage_woocommerce` capability and a valid nonce. Does not write any persistent state (no log entry, no scheduled job) — closes #8.
 - New admin tool: manual resend action on the WooCommerce order edit screen ("Wyślij e-mail z prośbą o ocenę / Send review request email"). Triggers `Ihumbak_WRS_Email_Sender::send_for_order()` for the current order, respecting all skip rules. Skip reason is reported in the admin notice. A private order note is always written for audit trail purposes — closes #8.
 - New class `Ihumbak_WRS_Admin_Email_Tools` (`admin/class-admin-email-tools.php`) providing the test-send form and order-action handler. Both actions are guarded by `manage_woocommerce` + nonce.

@@ -38,6 +38,7 @@ delete_option('ihumbak_wrs_email_body');
 delete_option('ihumbak_wrs_email_from_name');
 delete_option('ihumbak_wrs_email_from_email');
 delete_option('ihumbak_wrs_email_reply_to');
+delete_option('ihumbak_wrs_email_followups');
 
 // Delete transients
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ihumbak_wrs_%'");
