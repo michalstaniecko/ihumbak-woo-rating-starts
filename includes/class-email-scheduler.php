@@ -55,14 +55,24 @@ class Ihumbak_WRS_Email_Scheduler {
     const STEP_INITIAL = 0;
 
     /**
+     * Maksymalna liczba przypomnień follow-up (nie licząc wysyłki początkowej).
+     *
+     * @since 1.2.0
+     */
+    const MAX_FOLLOWUPS = 3;
+
+    /**
      * Wszystkie znane kroki sekwencji wysyłki.
      *
-     * Action Scheduler dopasowuje argumenty zadań dokładnie po pełnej tablicy
-     * (domyślnie `partial_args_matching = 'off'`), więc cancel_pending_for_order()
-     * musi odwołać każdy krok osobno z pełnymi argami z build_args(). Dopisanie
-     * nowego kroku w issue #9 wymaga dodania go tutaj.
+     * UWAGA: Ta tablica MUSI zawierać MAX_FOLLOWUPS + 1 wpisów (kroki 0..MAX_FOLLOWUPS).
+     * cancel_pending_for_order() musi odwołać każdy krok osobno z pełnymi argami
+     * z build_args() — Action Scheduler dopasowuje argumenty zadań dokładnie po
+     * pełnej tablicy (domyślnie `partial_args_matching = 'off'`). Dodanie nowego
+     * kroku wymaga aktualizacji tej stałej ORAZ stałej MAX_FOLLOWUPS.
+     *
+     * @since 1.2.0 Rozszerzona z [0] do [0, 1, 2, 3] (issue #9).
      */
-    const STEPS = array( self::STEP_INITIAL );
+    const STEPS = array( 0, 1, 2, 3 );
 
     /**
      * Konstruktor — rejestruje hooki.
@@ -182,6 +192,10 @@ class Ihumbak_WRS_Email_Scheduler {
      * @return bool True jeśli zadanie jest już w kolejce AS.
      */
     public static function is_already_scheduled( int $order_id, int $step = self::STEP_INITIAL ): bool {
+        if ( ! function_exists( 'as_next_scheduled_action' ) ) {
+            return false;
+        }
+
         return (bool) as_next_scheduled_action(
             self::SEND_ACTION_HOOK,
             self::build_args( $order_id, $step ),
@@ -264,5 +278,111 @@ class Ihumbak_WRS_Email_Scheduler {
      */
     private function should_cancel_on_refund(): bool {
         return (bool) get_option( 'ihumbak_wrs_email_skip_refunded', true );
+    }
+
+    // -------------------------------------------------------------------------
+    // Statyczne metody publiczne (follow-up, issue #9)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Planuje follow-up dla podanego zamówienia i numeru kroku.
+     *
+     * Odczytuje konfigurację przypomnień z opcji `ihumbak_wrs_email_followups`,
+     * waliduje wpis dla żądanego kroku, a następnie rejestruje jednorazowe
+     * zadanie Action Scheduler z odpowiednim opóźnieniem.
+     *
+     * Metoda jest statyczna, aby mogła być wywoływana z Ihumbak_WRS_Email_Followup_Scheduler
+     * bez potrzeby utrzymywania instancji schedulera.
+     *
+     * @since 1.2.0
+     *
+     * @param int $order_id  ID zamówienia.
+     * @param int $next_step Numer kroku follow-up (1..MAX_FOLLOWUPS).
+     * @return bool True jeśli zadanie zostało zaplanowane, false w pozostałych przypadkach.
+     */
+    public static function schedule_followup( int $order_id, int $next_step ): bool {
+        // Action Scheduler musi być dostępny — bez tego wywołania niżej rzuciłyby fatal error.
+        if ( ! function_exists( 'as_schedule_single_action' ) || ! function_exists( 'as_next_scheduled_action' ) ) {
+            return false;
+        }
+
+        // Sprawdź, czy funkcjonalność e-mail jest włączona.
+        if ( ! (bool) get_option( 'ihumbak_wrs_email_enabled', false ) ) {
+            return false;
+        }
+
+        // Walidacja zakresu kroku — step 0 to wysyłka początkowa, 1..MAX_FOLLOWUPS to follow-upy.
+        if ( $next_step < 1 || $next_step > self::MAX_FOLLOWUPS ) {
+            return false;
+        }
+
+        // Odczyt konfiguracji follow-upów; re-indeksowanie, by nie polegać na kluczach.
+        $followups = get_option( 'ihumbak_wrs_email_followups', array() );
+        if ( ! is_array( $followups ) ) {
+            $followups = array();
+        }
+        $followups = array_values( $followups );
+
+        // Indeks w tablicy followups: krok 1 odpowiada wpisowi 0, krok 2 — wpisowi 1, itd.
+        $entry_index = $next_step - 1;
+        if ( ! isset( $followups[ $entry_index ] ) || ! is_array( $followups[ $entry_index ] ) ) {
+            return false;
+        }
+
+        $entry      = $followups[ $entry_index ];
+        $delay_days = isset( $entry['delay_days'] ) ? (int) $entry['delay_days'] : 0;
+
+        // Zakres 1–365; wartości spoza zakresu są klampowane do najbliższej granicy.
+        $delay_days = max( 1, min( 365, $delay_days ) );
+
+        // Deduplicja — nie planuj jeśli już istnieje zadanie dla tego kroku.
+        if ( self::is_already_scheduled( $order_id, $next_step ) ) {
+            return false;
+        }
+
+        as_schedule_single_action(
+            time() + $delay_days * DAY_IN_SECONDS,
+            self::SEND_ACTION_HOOK,
+            self::build_args( $order_id, $next_step ),
+            self::AS_GROUP
+        );
+
+        return true;
+    }
+
+    /**
+     * Zwraca mapę kroków oczekujących w AS dla danego zamówienia.
+     *
+     * Iteruje po STEPS i dla każdego kroku pyta Action Scheduler o najbliższe
+     * zaplanowane zadanie pasujące do (hook, build_args, group). Zwraca tylko
+     * kroki, dla których istnieje zaplanowane zadanie.
+     *
+     * @since 1.2.0
+     *
+     * @param int $order_id ID zamówienia.
+     * @return array<int, int> Mapa `step => timestamp` (UTC) najbliższego zaplanowanego zadania.
+     */
+    public static function get_pending_steps_for_order( int $order_id ): array {
+        if ( ! function_exists( 'as_next_scheduled_action' ) ) {
+            return array();
+        }
+
+        $pending = array();
+
+        foreach ( self::STEPS as $step ) {
+            $step = (int) $step;
+
+            $timestamp = as_next_scheduled_action(
+                self::SEND_ACTION_HOOK,
+                self::build_args( $order_id, $step ),
+                self::AS_GROUP
+            );
+
+            if ( $timestamp ) {
+                $pending[ $step ] = (int) $timestamp;
+            }
+        }
+
+        return $pending;
     }
 }

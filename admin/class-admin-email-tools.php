@@ -70,6 +70,9 @@ class Ihumbak_WRS_Admin_Email_Tools {
 		add_filter( 'woocommerce_order_actions', array( $this, 'register_order_action' ) );
 		add_action( 'woocommerce_order_action_' . self::ORDER_ACTION_KEY, array( $this, 'handle_order_action' ) );
 
+		// Meta-box ze statusem wysyłki na ekranie zamówienia (legacy + HPOS).
+		add_action( 'add_meta_boxes', array( $this, 'register_order_meta_box' ), 30, 2 );
+
 		// Powiadomienia admina.
 		add_action( 'admin_notices', array( $this, 'render_pending_notice' ) );
 
@@ -274,6 +277,176 @@ class Ihumbak_WRS_Admin_Email_Tools {
 		// Zapisz notatkę do zamówienia (ślad audytu).
 		$note = $this->format_order_note( $result, $order );
 		$order->add_order_note( $note, false, true );
+	}
+
+	// -------------------------------------------------------------------------
+	// Meta-box statusu wysyłki na ekranie zamówienia (issue #9)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Rejestruje meta-box pokazujący status wysyłki dla bieżącego zamówienia.
+	 *
+	 * Obsługuje oba ekrany: klasyczny CPT (`shop_order`) i HPOS
+	 * (`woocommerce_page_wc-orders`). Pierwszy argument hooka `add_meta_boxes`
+	 * to post_type dla legacy i screen_id dla HPOS — dla zamówień obie wartości
+	 * trafiają do listy dozwolonych, więc kontroler obsługuje obie ścieżki.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param string $screen_id Post type (legacy) lub screen ID (HPOS).
+	 * @param mixed  $object    WP_Post (legacy) lub WC_Order (HPOS); nieużywany tutaj.
+	 */
+	public function register_order_meta_box( $screen_id, $object = null ): void { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter
+		unset( $object );
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
+
+		$allowed = array( 'shop_order', 'woocommerce_page_wc-orders' );
+		if ( ! in_array( $screen_id, $allowed, true ) ) {
+			return;
+		}
+
+		add_meta_box(
+			'ihumbak_wrs_review_emails',
+			__( 'Wiadomości z prośbą o ocenę / Review request emails', 'ihumbak-woo-rating-stars' ),
+			array( $this, 'render_order_meta_box' ),
+			$screen_id,
+			'side',
+			'default'
+		);
+	}
+
+	/**
+	 * Renderuje treść meta-boxu statusu wysyłki dla pojedynczego zamówienia.
+	 *
+	 * Pokazuje:
+	 *  - zaplanowane wysyłki AS per krok (z timestampem),
+	 *  - skróconą konfigurację follow-upów,
+	 *  - hint o tym, że ręczna wysyłka uruchamia łańcuch przypomnień.
+	 *
+	 * Nie pokazuje historii wysyłek (osobny ticket #11 — log wysyłek).
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param mixed $post_or_order WP_Post (legacy) lub WC_Order (HPOS).
+	 */
+	public function render_order_meta_box( $post_or_order ): void {
+		// Sprowadzenie do WC_Order niezależnie od trybu.
+		if ( $post_or_order instanceof \WC_Order ) {
+			$order = $post_or_order;
+		} elseif ( is_object( $post_or_order ) && isset( $post_or_order->ID ) ) {
+			$order = wc_get_order( (int) $post_or_order->ID );
+		} else {
+			$order = false;
+		}
+
+		if ( ! ( $order instanceof \WC_Order ) ) {
+			echo '<p>' . esc_html__( 'Nie udało się załadować zamówienia. / Could not load order.', 'ihumbak-woo-rating-stars' ) . '</p>';
+			return;
+		}
+
+		$order_id = (int) $order->get_id();
+		$enabled  = (bool) get_option( 'ihumbak_wrs_email_enabled', false );
+
+		if ( ! $enabled ) {
+			echo '<p>' . esc_html__( 'Wysyłka e-maili jest globalnie wyłączona. / Email sending is globally disabled.', 'ihumbak-woo-rating-stars' ) . '</p>';
+			return;
+		}
+
+		// 1. Zaplanowane kroki.
+		$pending = Ihumbak_WRS_Email_Scheduler::get_pending_steps_for_order( $order_id );
+
+		echo '<p style="margin-top:0;"><strong>' . esc_html__( 'Zaplanowane / Scheduled', 'ihumbak-woo-rating-stars' ) . '</strong></p>';
+
+		if ( empty( $pending ) ) {
+			echo '<p style="margin:0 0 12px 0;">' . esc_html__( 'Brak zaplanowanych wysyłek. / No scheduled sends.', 'ihumbak-woo-rating-stars' ) . '</p>';
+		} else {
+			echo '<ul style="margin:0 0 12px 0; padding-left: 1.2em;">';
+			$datetime_format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+			foreach ( $pending as $step => $timestamp ) {
+				$label = $this->format_step_label( (int) $step );
+				$when  = wp_date( $datetime_format, (int) $timestamp );
+				printf(
+					'<li><strong>%1$s</strong><br><span class="description">%2$s</span></li>',
+					esc_html( $label ),
+					esc_html( (string) $when )
+				);
+			}
+			echo '</ul>';
+		}
+
+		// 2. Konfiguracja follow-upów.
+		$followups = get_option( 'ihumbak_wrs_email_followups', array() );
+		if ( ! is_array( $followups ) ) {
+			$followups = array();
+		}
+		$followups   = array_values( array_filter( $followups, 'is_array' ) );
+		$config_max  = (int) Ihumbak_WRS_Email_Scheduler::MAX_FOLLOWUPS;
+		$config_used = min( $config_max, count( $followups ) );
+
+		echo '<p><strong>' . esc_html__( 'Konfiguracja follow-up / Follow-up configuration', 'ihumbak-woo-rating-stars' ) . '</strong></p>';
+
+		if ( 0 === $config_used ) {
+			echo '<p style="margin:0 0 12px 0;">' . esc_html__( 'Brak skonfigurowanych przypomnień. / No follow-ups configured.', 'ihumbak-woo-rating-stars' ) . '</p>';
+		} else {
+			$delays_short = array();
+			for ( $i = 0; $i < $config_used; $i++ ) {
+				$entry = $followups[ $i ];
+				$days  = isset( $entry['delay_days'] ) ? (int) $entry['delay_days'] : 0;
+				if ( $days > 0 ) {
+					$delays_short[] = sprintf(
+						/* translators: %d: liczba dni opóźnienia / number of delay days */
+						esc_html__( '%dd', 'ihumbak-woo-rating-stars' ),
+						$days
+					);
+				}
+			}
+
+			printf(
+				'<p style="margin:0 0 12px 0;">%s: %s</p>',
+				esc_html(
+					sprintf(
+						/* translators: %1$d: configured count, %2$d: max allowed */
+						__( 'Przypomnień / Follow-ups: %1$d/%2$d', 'ihumbak-woo-rating-stars' ),
+						$config_used,
+						$config_max
+					)
+				),
+				esc_html( implode( ', ', $delays_short ) )
+			);
+		}
+
+		// 3. Hint o łańcuchu przy ręcznej wysyłce.
+		echo '<p class="description" style="margin-top:12px;">';
+		echo esc_html__( 'Ręczne wysłanie (Order actions → „Wyślij e-mail z prośbą o ocenę") uruchamia również skonfigurowany łańcuch follow-up.', 'ihumbak-woo-rating-stars' );
+		echo '<br><em>';
+		echo esc_html__( 'Manually sending the email (Order actions → "Send review request email") will also trigger the configured follow-up chain.', 'ihumbak-woo-rating-stars' );
+		echo '</em></p>';
+	}
+
+	/**
+	 * Formatuje etykietę kroku do wyświetlenia w UI.
+	 *
+	 * Krok 0 to wysyłka początkowa; kroki 1..MAX_FOLLOWUPS to follow-upy.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param int $step Numer kroku.
+	 * @return string Sformatowana etykieta.
+	 */
+	private function format_step_label( int $step ): string {
+		if ( $step <= 0 ) {
+			return __( 'Krok 0 (wysyłka początkowa) / Step 0 (initial)', 'ihumbak-woo-rating-stars' );
+		}
+
+		return sprintf(
+			/* translators: 1: numer kroku AS, 2: numer follow-up */
+			__( 'Krok %1$d (follow-up #%2$d) / Step %1$d (follow-up #%2$d)', 'ihumbak-woo-rating-stars' ),
+			$step,
+			$step
+		);
 	}
 
 	// -------------------------------------------------------------------------
