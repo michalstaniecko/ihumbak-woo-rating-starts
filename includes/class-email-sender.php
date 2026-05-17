@@ -185,11 +185,6 @@ class Ihumbak_WRS_Email_Sender {
 			);
 		}
 
-		// Pobierz surowy temat, treść i nagłówek z ustawień.
-		$raw_subject = (string) get_option( 'ihumbak_wrs_email_subject', '' );
-		$raw_body    = (string) get_option( 'ihumbak_wrs_email_body', '' );
-		$raw_heading = (string) get_option( 'ihumbak_wrs_email_heading', '' );
-
 		// Rozwiąż kontekst dla podstawień w szablonie.
 		$order        = null;
 		$sample_items = array();
@@ -217,6 +212,13 @@ class Ihumbak_WRS_Email_Sender {
 				$sample_items = $order->get_items( 'line_item' );
 			}
 		}
+
+		// Rozwiąż język zamówienia i pobierz zlokalizowany szablon.
+		// Resolver obsługuje fallback do języka domyślnego gdy brak tłumaczenia.
+		$order_lang  = ( null !== $order ) ? Ihumbak_WRS_Multilingual::get_order_language( $order ) : null;
+		$raw_subject = Ihumbak_WRS_Email_Template_Resolver::get_subject( $order_lang );
+		$raw_body    = Ihumbak_WRS_Email_Template_Resolver::get_body( $order_lang );
+		$raw_heading = Ihumbak_WRS_Email_Template_Resolver::get_heading( $order_lang );
 
 		// Zbuduj konteksty do renderowania szablonu.
 		// WAŻNE: $is_test = true blokuje auto-generowanie kuponów w trybie 'auto' —
@@ -389,9 +391,11 @@ class Ihumbak_WRS_Email_Sender {
 		}
 
 		// Krok 9 — Budowanie kontekstu, render, dispatch.
-		$raw_subject  = (string) get_option( 'ihumbak_wrs_email_subject', '' );
-		$raw_body     = (string) get_option( 'ihumbak_wrs_email_body', '' );
-		$raw_heading  = (string) get_option( 'ihumbak_wrs_email_heading', '' );
+		// Rozwiąż język zamówienia i pobierz zlokalizowany szablon (z fallback do domyślnego).
+		$order_lang  = Ihumbak_WRS_Multilingual::get_order_language( $order );
+		$raw_subject = Ihumbak_WRS_Email_Template_Resolver::get_subject( $order_lang );
+		$raw_body    = Ihumbak_WRS_Email_Template_Resolver::get_body( $order_lang );
+		$raw_heading = Ihumbak_WRS_Email_Template_Resolver::get_heading( $order_lang );
 
 		// Temat renderowany z surowymi wartościami (nagłówek plain-text).
 		// Dla products_list i rating_links_list podstawiamy pusty ciąg — zapobiega
