@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ## [1.4.0] - 2026-05-17
 
+### Developer / Tooling
+- Dodano skill `.claude/skills/release/SKILL.md` automatyzujący proces wydania nowej wersji (bump → commit → tag → push). Argument: `major` / `minor` / `patch`. Skill aktualizuje nagłówek pluginu, stałą `IHUMBAK_WRS_VERSION`, `CHANGELOG.md` oraz (jeśli istnieje) `readme.txt`; tworzy annotowany tag `vX.Y.Z` i wypycha commit + tag na `origin/main`.
+
+### Notes
+- Brak zmian w kodzie pluginu. Wersja podbita do `1.4.0` w wyniku użycia argumentu `minor` przy wywołaniu skill-a release; funkcjonalnie wydanie jest równoważne `1.3.0`.
+
 ## [1.3.0] - 2026-05-17
 
 ### Added (issue #12 — multilingual email templates — WPML / Polylang)
