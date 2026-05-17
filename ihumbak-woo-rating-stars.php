@@ -123,6 +123,13 @@ final class Ihumbak_WooCommerce_Rating_Stars {
         new Ihumbak_WRS_Email_Sender();
         new Ihumbak_WRS_Email_Followup_Scheduler();
 
+        // Logger wysyłek — ładujemy tylko gdy opcja jest włączona.
+        // Hook 'ihumbak_wrs_email_send_complete' uruchamia się także w kontekście Action Scheduler / WP-Cron,
+        // dlatego instancjonujemy poza blokiem is_admin().
+        if ( Ihumbak_WRS_Email_Log::is_enabled() ) {
+            new Ihumbak_WRS_Email_Log();
+        }
+
         // SEO & Schema.org
         new Ihumbak_WRS_Schema_Markup();
 
@@ -132,6 +139,9 @@ final class Ihumbak_WooCommerce_Rating_Stars {
             new Ihumbak_WRS_Admin_Settings();
             new Ihumbak_WRS_Admin_Email_Settings();
             new Ihumbak_WRS_Admin_Email_Tools();
+            if ( Ihumbak_WRS_Email_Log::is_enabled() ) {
+                new Ihumbak_WRS_Admin_Email_Log();
+            }
         }
 
         // Frontend

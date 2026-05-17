@@ -51,6 +51,10 @@ class Ihumbak_WRS_Admin_Email_Settings {
         add_action( 'admin_menu', array( $this, 'add_submenu' ), 20 );
         add_action( 'admin_init', array( $this, 'register_settings' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+
+        // Obserwatorzy cyklu życia opcji logowania — tworzą tabelę gdy opcja jest włączana.
+        add_action( 'add_option_ihumbak_wrs_email_log_enabled', array( $this, 'on_log_option_added' ), 10, 2 );
+        add_action( 'update_option_ihumbak_wrs_email_log_enabled', array( $this, 'on_log_option_updated' ), 10, 3 );
     }
 
     /**
@@ -271,6 +275,16 @@ class Ihumbak_WRS_Admin_Email_Settings {
             )
         );
 
+        register_setting(
+            self::OPTION_GROUP,
+            'ihumbak_wrs_email_log_enabled',
+            array(
+                'type'              => 'boolean',
+                'default'           => false,
+                'sanitize_callback' => array( $this, 'sanitize_bool' ),
+            )
+        );
+
         $this->add_sections_and_fields();
     }
 
@@ -441,6 +455,23 @@ class Ihumbak_WRS_Admin_Email_Settings {
             array( $this, 'render_followups' ),
             self::PAGE_SLUG,
             'ihumbak_wrs_email_followups'
+        );
+
+        // Sekcja 5: Diagnostyka.
+        add_settings_section(
+            'ihumbak_wrs_email_diagnostics',
+            __( 'Diagnostyka / Diagnostics', 'ihumbak-woo-rating-stars' ),
+            '__return_false',
+            self::PAGE_SLUG
+        );
+
+        add_settings_field(
+            'ihumbak_wrs_email_log_enabled',
+            __( 'Loguj próby wysyłki / Log send attempts', 'ihumbak-woo-rating-stars' ),
+            array( $this, 'render_log_enabled' ),
+            self::PAGE_SLUG,
+            'ihumbak_wrs_email_diagnostics',
+            array( 'label_for' => 'ihumbak_wrs_email_log_enabled' )
         );
     }
 
@@ -1332,6 +1363,54 @@ class Ihumbak_WRS_Admin_Email_Settings {
         }());
         </script>
         <?php
+    }
+
+    /**
+     * Renderuje pole "Loguj próby wysyłki".
+     */
+    public function render_log_enabled() {
+        $value = (bool) get_option( 'ihumbak_wrs_email_log_enabled', false );
+        ?>
+        <input type="hidden" name="ihumbak_wrs_email_log_enabled" value="0" />
+        <input type="checkbox" id="ihumbak_wrs_email_log_enabled" name="ihumbak_wrs_email_log_enabled" value="1" <?php checked( true, $value ); ?> />
+        <p class="description">
+            <?php esc_html_e( 'Zapisuje wpis w bazie danych dla każdej próby wysyłki (wysłana / pominięta / błąd). Tabela może urosnąć przy dużym wolumenie — wyłącz, gdy nie diagnozujesz problemów. / Stores a database row per send attempt. May grow with volume — disable when not actively debugging.', 'ihumbak-woo-rating-stars' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Wywoływany gdy opcja logowania jest dodawana po raz pierwszy.
+     *
+     * @param string $option Nazwa opcji.
+     * @param mixed  $value  Nowa wartość opcji.
+     */
+    public function on_log_option_added( $option, $value ) {
+        if ( (bool) $value ) {
+            $this->maybe_create_email_log_table();
+        }
+    }
+
+    /**
+     * Wywoływany gdy opcja logowania jest aktualizowana.
+     *
+     * Tworzy tabelę tylko przy przejściu false → true.
+     *
+     * @param mixed  $old_value Poprzednia wartość opcji.
+     * @param mixed  $value     Nowa wartość opcji.
+     * @param string $option    Nazwa opcji.
+     */
+    public function on_log_option_updated( $old_value, $value, $option ) {
+        if ( ! (bool) $old_value && (bool) $value ) {
+            $this->maybe_create_email_log_table();
+        }
+    }
+
+    /**
+     * Tworzy tabelę logów e-mail jeśli jeszcze nie istnieje.
+     */
+    private function maybe_create_email_log_table() {
+        ( new Ihumbak_WRS_Database_Migration() )->create_email_log_table();
     }
 
     /**
