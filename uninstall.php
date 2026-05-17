@@ -8,10 +8,21 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
-// Delete custom database table
+// Opt-in czyszczenie danych — domyślnie OFF, dezinstalacja zostawia tabele,
+// opcje i meta nietknięte, żeby ponowna instalacja widziała poprzedni stan.
+// Wzorzec analogiczny do WooCommerce ('woocommerce_remove_data_on_uninstall').
+if ( 'yes' !== get_option( 'ihumbak_wrs_remove_data_on_uninstall' ) ) {
+    return;
+}
+
+// Delete custom database tables
 global $wpdb;
 $table_name = $wpdb->prefix . 'woo_quick_ratings';
 $wpdb->query("DROP TABLE IF EXISTS {$table_name}");
+
+// Drop tabeli logów e-mail przez klasę migracji (DRY — jeden punkt definicji nazwy tabeli).
+require_once __DIR__ . '/database/class-database-migration.php';
+( new Ihumbak_WRS_Database_Migration() )->drop_email_log_table();
 
 // Delete plugin options
 delete_option('ihumbak_wrs_enabled');
@@ -24,6 +35,7 @@ delete_option('ihumbak_wrs_star_color');
 delete_option('ihumbak_wrs_text_rate');
 delete_option('ihumbak_wrs_text_thanks');
 delete_option('ihumbak_wrs_db_version');
+delete_option('ihumbak_wrs_remove_data_on_uninstall');
 
 // Delete email settings options (issue #3)
 delete_option('ihumbak_wrs_email_enabled');
@@ -44,6 +56,7 @@ delete_option('ihumbak_wrs_email_coupon_mode');
 delete_option('ihumbak_wrs_email_coupon_auto_discount');
 delete_option('ihumbak_wrs_email_coupon_auto_validity_days');
 delete_option('ihumbak_wrs_email_followups');
+delete_option('ihumbak_wrs_email_log_enabled');
 
 // Delete transients
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ihumbak_wrs_%'");

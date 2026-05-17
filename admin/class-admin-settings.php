@@ -27,6 +27,7 @@ class Ihumbak_WRS_Admin_Settings {
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_star_color');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_text_rate');
         register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_text_thanks');
+        register_setting('ihumbak_wrs_settings', 'ihumbak_wrs_remove_data_on_uninstall');
     }
     
     /**
@@ -216,8 +217,27 @@ class Ihumbak_WRS_Admin_Settings {
                             </p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="ihumbak_wrs_remove_data_on_uninstall">
+                                <?php esc_html_e('Remove all data on uninstall', 'ihumbak-woo-rating-stars'); ?>
+                            </label>
+                        </th>
+                        <td>
+                            <input type="checkbox"
+                                   id="ihumbak_wrs_remove_data_on_uninstall"
+                                   name="ihumbak_wrs_remove_data_on_uninstall"
+                                   value="yes"
+                                   <?php checked(get_option('ihumbak_wrs_remove_data_on_uninstall'), 'yes'); ?>>
+                            <p class="description">
+                                <?php esc_html_e('When enabled, removing the plugin will also drop its database tables, delete its options, transients and per-order meta. Disabled by default — uninstalling the plugin leaves your ratings and email log intact so you can safely reinstall later.', 'ihumbak-woo-rating-stars'); ?>
+                                <br>
+                                <strong style="color: #d63638;">⚠️ <?php esc_html_e('Warning: this action is irreversible. Leave unchecked if you only want to deactivate the plugin temporarily.', 'ihumbak-woo-rating-stars'); ?></strong>
+                            </p>
+                        </td>
+                    </tr>
                 </table>
-                
+
                 <?php submit_button(); ?>
             </form>
         </div>
@@ -237,7 +257,8 @@ class Ihumbak_WRS_Admin_Settings {
         update_option('ihumbak_wrs_star_color', sanitize_hex_color($_POST['ihumbak_wrs_star_color']));
         update_option('ihumbak_wrs_text_rate', sanitize_text_field($_POST['ihumbak_wrs_text_rate']));
         update_option('ihumbak_wrs_text_thanks', sanitize_text_field($_POST['ihumbak_wrs_text_thanks']));
-        
+        update_option('ihumbak_wrs_remove_data_on_uninstall', isset($_POST['ihumbak_wrs_remove_data_on_uninstall']) ? 'yes' : 'no');
+
         // Clear all caches
         global $wpdb;
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ihumbak_wrs_%'");
