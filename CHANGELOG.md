@@ -41,6 +41,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed (issue #21)
 - `Ihumbak_WRS_Email_Sender::process()` i `send_test()` renderują teraz nagłówek z opcji `ihumbak_wrs_email_heading` (lub wartości domyślnej) i przekazują go do `wrap_with_wc_template()` przed `dispatch_raw()`.
+- Wersja: `1.2.0` → `1.2.1`.
 
 ## [1.2.0] - 2026-05-16
 

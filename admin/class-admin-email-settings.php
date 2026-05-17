@@ -544,9 +544,8 @@ class Ihumbak_WRS_Admin_Email_Settings {
                 $section_id = 'ihumbak_wrs_email_content_' . $code;
 
                 $section_title = sprintf(
-                    /* translators: %1$s and %2$s: natywna nazwa języka (np. "Polski") / native name of the language (e.g. "Polski"). */
-                    __( 'Treść wiadomości — %1$s / Email content — %2$s', 'ihumbak-woo-rating-stars' ),
-                    $native_name,
+                    /* translators: %s: natywna nazwa języka (np. "Polski") / native name of the language (e.g. "Polski"). */
+                    __( 'Treść wiadomości / Email content — %s', 'ihumbak-woo-rating-stars' ),
                     $native_name
                 );
 
