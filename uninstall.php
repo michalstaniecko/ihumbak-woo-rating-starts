@@ -57,6 +57,20 @@ delete_option('ihumbak_wrs_email_coupon_auto_validity_days');
 delete_option('ihumbak_wrs_email_followups');
 delete_option('ihumbak_wrs_email_log_enabled');
 
+// Usuń opcje per-język (issue #12 — WPML / Polylang) przed czyszczeniem cache.
+// Wzorzec 'ihumbak_wrs_email_subject_%' NIE pasuje do klucza bazowego 'ihumbak_wrs_email_subject'
+// (brak segmentu podkreślenia na końcu), więc klucze bazowe usunięte powyżej nie zostaną
+// usunięte ponownie — brak kolizji, bezpieczna operacja.
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+$wpdb->query(
+    $wpdb->prepare(
+        "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $wpdb->esc_like( 'ihumbak_wrs_email_subject_' ) . '%',
+        $wpdb->esc_like( 'ihumbak_wrs_email_heading_' ) . '%',
+        $wpdb->esc_like( 'ihumbak_wrs_email_body_' ) . '%'
+    )
+);
+
 // Delete transients
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_ihumbak_wrs_%'");
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_ihumbak_wrs_%'");

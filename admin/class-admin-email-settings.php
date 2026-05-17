@@ -285,6 +285,59 @@ class Ihumbak_WRS_Admin_Email_Settings {
             )
         );
 
+        // Rejestracja opcji per-język dla niedomyślnych języków (WPML / Polylang).
+        //
+        // Trade-off: rejestracja jest dynamiczna — kluczy `ihumbak_wrs_email_*_{lang}`
+        // pilnujemy tylko dla języków aktywnych w tej chwili. Jeśli administrator
+        // dezaktywuje język w WPML/Polylang po zapisaniu tłumaczenia, sekcja zniknie
+        // z UI, ale wartości pozostaną w `wp_options` jako sieroty do momentu
+        // odinstalowania pluginu (zob. `uninstall.php` — LIKE-cleanup obsługuje
+        // wszystkie sufiksy). Świadoma decyzja: alternatywa wymagałaby spinania się
+        // na hooki dezaktywacji języka z WPML/Polylang (wąski cross-plugin contract),
+        // co jest poza zakresem #12.
+        if ( class_exists( 'Ihumbak_WRS_Multilingual' ) && Ihumbak_WRS_Multilingual::is_active() ) {
+            foreach ( Ihumbak_WRS_Multilingual::get_active_languages() as $lang ) {
+                if ( ! empty( $lang['is_default'] ) ) {
+                    continue; // Język domyślny używa kluczy bazowych.
+                }
+
+                $code = sanitize_key( (string) $lang['code'] );
+                if ( '' === $code ) {
+                    continue;
+                }
+
+                register_setting(
+                    self::OPTION_GROUP,
+                    'ihumbak_wrs_email_subject_' . $code,
+                    array(
+                        'type'              => 'string',
+                        'default'           => '',
+                        'sanitize_callback' => 'sanitize_text_field',
+                    )
+                );
+
+                register_setting(
+                    self::OPTION_GROUP,
+                    'ihumbak_wrs_email_heading_' . $code,
+                    array(
+                        'type'              => 'string',
+                        'default'           => '',
+                        'sanitize_callback' => 'sanitize_text_field',
+                    )
+                );
+
+                register_setting(
+                    self::OPTION_GROUP,
+                    'ihumbak_wrs_email_body_' . $code,
+                    array(
+                        'type'              => 'string',
+                        'default'           => '',
+                        'sanitize_callback' => 'wp_kses_post',
+                    )
+                );
+            }
+        }
+
         $this->add_sections_and_fields();
     }
 
@@ -473,6 +526,73 @@ class Ihumbak_WRS_Admin_Email_Settings {
             'ihumbak_wrs_email_diagnostics',
             array( 'label_for' => 'ihumbak_wrs_email_log_enabled' )
         );
+
+        // Sekcje per-język (WPML / Polylang) — dla niedomyślnych języków.
+        if ( class_exists( 'Ihumbak_WRS_Multilingual' ) && Ihumbak_WRS_Multilingual::is_active() ) {
+            foreach ( Ihumbak_WRS_Multilingual::get_active_languages() as $lang ) {
+                if ( ! empty( $lang['is_default'] ) ) {
+                    continue;
+                }
+
+                $code        = sanitize_key( (string) $lang['code'] );
+                $native_name = esc_html( (string) $lang['native_name'] );
+
+                if ( '' === $code ) {
+                    continue;
+                }
+
+                $section_id = 'ihumbak_wrs_email_content_' . $code;
+
+                $section_title = sprintf(
+                    /* translators: %s: natywna nazwa języka (np. "Polski") / native name of the language (e.g. "Polski"). */
+                    __( 'Treść wiadomości / Email content — %s', 'ihumbak-woo-rating-stars' ),
+                    $native_name
+                );
+
+                add_settings_section(
+                    $section_id,
+                    $section_title,
+                    array( $this, 'render_lang_section_intro' ),
+                    self::PAGE_SLUG
+                );
+
+                add_settings_field(
+                    'ihumbak_wrs_email_subject_' . $code,
+                    __( 'Temat / Subject', 'ihumbak-woo-rating-stars' ),
+                    array( $this, 'render_localized_subject' ),
+                    self::PAGE_SLUG,
+                    $section_id,
+                    array(
+                        'label_for' => 'ihumbak_wrs_email_subject_' . $code,
+                        'lang'      => $code,
+                    )
+                );
+
+                add_settings_field(
+                    'ihumbak_wrs_email_heading_' . $code,
+                    __( 'Nagłówek wiadomości / Email heading', 'ihumbak-woo-rating-stars' ),
+                    array( $this, 'render_localized_heading' ),
+                    self::PAGE_SLUG,
+                    $section_id,
+                    array(
+                        'label_for' => 'ihumbak_wrs_email_heading_' . $code,
+                        'lang'      => $code,
+                    )
+                );
+
+                add_settings_field(
+                    'ihumbak_wrs_email_body_' . $code,
+                    __( 'Treść / Body', 'ihumbak-woo-rating-stars' ),
+                    array( $this, 'render_localized_body' ),
+                    self::PAGE_SLUG,
+                    $section_id,
+                    array(
+                        'label_for' => 'ihumbak_wrs_email_body_' . $code,
+                        'lang'      => $code,
+                    )
+                );
+            }
+        }
     }
 
     /* ----------------------------------------------------------------
@@ -1375,6 +1495,82 @@ class Ihumbak_WRS_Admin_Email_Settings {
         <input type="checkbox" id="ihumbak_wrs_email_log_enabled" name="ihumbak_wrs_email_log_enabled" value="1" <?php checked( true, $value ); ?> />
         <p class="description">
             <?php esc_html_e( 'Zapisuje wpis w bazie danych dla każdej próby wysyłki (wysłana / pominięta / błąd). Tabela może urosnąć przy dużym wolumenie — wyłącz, gdy nie diagnozujesz problemów. / Stores a database row per send attempt. May grow with volume — disable when not actively debugging.', 'ihumbak-woo-rating-stars' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Renderuje notatkę wprowadzającą sekcji per-język.
+     *
+     * Informuje administratora, że puste pole powoduje fallback do języka domyślnego.
+     *
+     * @param array $args Argumenty sekcji (nieużywane).
+     */
+    public function render_lang_section_intro( array $args = array() ): void {
+        echo '<p class="description">' . esc_html__(
+            'Pozostaw puste, aby użyć wartości z języka domyślnego. / Leave empty to fall back to the default language.',
+            'ihumbak-woo-rating-stars'
+        ) . '</p>';
+    }
+
+    /**
+     * Renderuje pole tematu wiadomości dla niedomyślnego języka.
+     *
+     * @param array $args Argumenty pola — wymagany klucz 'lang' z kodem języka.
+     */
+    public function render_localized_subject( array $args ): void {
+        $lang    = sanitize_key( (string) ( $args['lang'] ?? '' ) );
+        $opt_key = 'ihumbak_wrs_email_subject_' . $lang;
+        $value   = (string) get_option( $opt_key, '' );
+        ?>
+        <input type="text" id="<?php echo esc_attr( $opt_key ); ?>" name="<?php echo esc_attr( $opt_key ); ?>"
+               value="<?php echo esc_attr( $value ); ?>" class="large-text" />
+        <p class="description">
+            <?php esc_html_e( 'Pozostaw puste, aby użyć wartości z języka domyślnego. / Leave empty to fall back to the default language.', 'ihumbak-woo-rating-stars' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Renderuje pole nagłówka wiadomości dla niedomyślnego języka.
+     *
+     * @param array $args Argumenty pola — wymagany klucz 'lang' z kodem języka.
+     */
+    public function render_localized_heading( array $args ): void {
+        $lang    = sanitize_key( (string) ( $args['lang'] ?? '' ) );
+        $opt_key = 'ihumbak_wrs_email_heading_' . $lang;
+        $value   = (string) get_option( $opt_key, '' );
+        ?>
+        <input type="text" id="<?php echo esc_attr( $opt_key ); ?>" name="<?php echo esc_attr( $opt_key ); ?>"
+               value="<?php echo esc_attr( $value ); ?>" class="large-text" />
+        <p class="description">
+            <?php esc_html_e( 'Pozostaw puste, aby użyć wartości z języka domyślnego. / Leave empty to fall back to the default language.', 'ihumbak-woo-rating-stars' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Renderuje pole treści wiadomości (edytor HTML) dla niedomyślnego języka.
+     *
+     * @param array $args Argumenty pola — wymagany klucz 'lang' z kodem języka.
+     */
+    public function render_localized_body( array $args ): void {
+        $lang    = sanitize_key( (string) ( $args['lang'] ?? '' ) );
+        $opt_key = 'ihumbak_wrs_email_body_' . $lang;
+        $value   = (string) get_option( $opt_key, '' );
+
+        wp_editor(
+            $value,
+            $opt_key,
+            array(
+                'textarea_name' => $opt_key,
+                'media_buttons' => false,
+                'textarea_rows' => 10,
+            )
+        );
+        ?>
+        <p class="description">
+            <?php esc_html_e( 'Pozostaw puste, aby użyć wartości z języka domyślnego. Dozwolone tagi zgodne z wp_kses_post. / Leave empty to fall back to the default language. Allowed tags follow wp_kses_post.', 'ihumbak-woo-rating-stars' ); ?>
         </p>
         <?php
     }
