@@ -31,15 +31,23 @@ class Ihumbak_WRS_Admin_Email_Log {
 	/** Liczba wpisów na stronę. */
 	const PER_PAGE = 20;
 
+	/** Nazwa akcji admin-post.php dla wyczyszczenia logu. */
+	const ADMIN_POST_CLEAR = 'ihumbak_wrs_clear_log';
+
 	// -------------------------------------------------------------------------
 	// Konstruktor
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Konstruktor — rejestruje hook admin_menu.
+	 * Konstruktor — rejestruje hooki admin_menu oraz admin-post handler.
+	 *
+	 * Handler `handle_clear_log` jest podpięty pod `admin_post_*`, dzięki czemu
+	 * uruchamia się PRZED `admin-header.php` — wp_safe_redirect() działa
+	 * poprawnie (wzorzec PRG, identyczny z Ihumbak_WRS_Admin_Email_Tools).
 	 */
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_submenu' ), 25 );
+		add_action( 'admin_post_' . self::ADMIN_POST_CLEAR, array( $this, 'handle_clear_log' ) );
 	}
 
 	// -------------------------------------------------------------------------
@@ -74,10 +82,6 @@ class Ihumbak_WRS_Admin_Email_Log {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			wp_die( esc_html__( 'Brak uprawnień / Insufficient permissions.', 'ihumbak-woo-rating-stars' ) );
 		}
-
-		// Obsługa akcji "Wyczyść log" — wykonuje się przed jakimkolwiek outputem,
-		// by możliwy był wp_safe_redirect (PRG pattern — uniknięcie re-submitu na F5).
-		$this->maybe_handle_clear_log();
 
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'Email Log', 'ihumbak-woo-rating-stars' ) . '</h1>';
@@ -188,41 +192,36 @@ class Ihumbak_WRS_Admin_Email_Log {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Obsługuje submit formularza "Wyczyść log" (POST + nonce).
+	 * Handler admin-post.php dla wyczyszczenia logu.
 	 *
-	 * Po pomyślnym wyczyszczeniu wykonuje wp_safe_redirect — wzorzec
-	 * Post/Redirect/Get zapobiega ponownemu czyszczeniu przy F5.
+	 * Wywoływany przez hook `admin_post_ihumbak_wrs_clear_log` PRZED
+	 * załadowaniem `admin-header.php` — dzięki temu `wp_safe_redirect()`
+	 * może wysłać nagłówek `Location:` (PRG pattern, brak re-submitu na F5).
 	 */
-	private function maybe_handle_clear_log(): void {
-		if ( ! isset( $_POST['ihumbak_wrs_clear_log'] ) ) {
-			return;
-		}
-
-		check_admin_referer( 'ihumbak_wrs_clear_log' );
-
+	public function handle_clear_log(): void {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			return;
+			wp_die(
+				esc_html__( 'Brak uprawnień / Insufficient permissions.', 'ihumbak-woo-rating-stars' ),
+				'',
+				array( 'response' => 403 )
+			);
 		}
 
-		if ( ! Ihumbak_WRS_Email_Log::table_exists() ) {
-			return;
+		check_admin_referer( self::ADMIN_POST_CLEAR );
+
+		$redirect_args = array( 'page' => self::PAGE_SLUG );
+
+		if ( Ihumbak_WRS_Email_Log::table_exists() ) {
+			global $wpdb;
+			$table = Ihumbak_WRS_Email_Log::get_table_name();
+
+			// TRUNCATE resetuje AUTO_INCREMENT i jest szybsze niż DELETE bez WHERE.
+			$wpdb->query( "TRUNCATE TABLE {$table}" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+			$redirect_args['cleared'] = '1';
 		}
 
-		global $wpdb;
-		$table = Ihumbak_WRS_Email_Log::get_table_name();
-
-		// TRUNCATE resetuje AUTO_INCREMENT i jest szybsze niż DELETE bez WHERE.
-		$wpdb->query( "TRUNCATE TABLE {$table}" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-
-		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page'    => self::PAGE_SLUG,
-					'cleared' => '1',
-				),
-				admin_url( 'admin.php' )
-			)
-		);
+		wp_safe_redirect( add_query_arg( $redirect_args, admin_url( 'admin.php' ) ) );
 		exit;
 	}
 
@@ -230,14 +229,16 @@ class Ihumbak_WRS_Admin_Email_Log {
 	 * Renderuje formularz z przyciskiem "Wyczyść log".
 	 *
 	 * Przycisk wymaga potwierdzenia (confirm) i nonce'a — chroni przed
-	 * przypadkowym kliknięciem i CSRF.
+	 * przypadkowym kliknięciem i CSRF. Formularz POST-uje do admin-post.php,
+	 * co pozwala handlerowi uruchomić się przed jakimkolwiek outputem.
 	 */
 	private function render_clear_log_form(): void {
 		$confirm = __( 'Na pewno wyczyścić cały log? Akcja jest nieodwracalna. / Clear the entire log? This cannot be undone.', 'ihumbak-woo-rating-stars' );
 		?>
-		<form method="post" style="margin: 12px 0;" onsubmit="return confirm( <?php echo wp_json_encode( $confirm ); ?> );">
-			<?php wp_nonce_field( 'ihumbak_wrs_clear_log' ); ?>
-			<button type="submit" name="ihumbak_wrs_clear_log" value="1" class="button">
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin: 12px 0;" onsubmit="return confirm( <?php echo wp_json_encode( $confirm ); ?> );">
+			<input type="hidden" name="action" value="<?php echo esc_attr( self::ADMIN_POST_CLEAR ); ?>" />
+			<?php wp_nonce_field( self::ADMIN_POST_CLEAR ); ?>
+			<button type="submit" class="button">
 				<?php esc_html_e( 'Wyczyść log / Clear log', 'ihumbak-woo-rating-stars' ); ?>
 			</button>
 		</form>

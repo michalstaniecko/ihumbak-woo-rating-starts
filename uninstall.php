@@ -15,14 +15,13 @@ if ( 'yes' !== get_option( 'ihumbak_wrs_remove_data_on_uninstall' ) ) {
     return;
 }
 
-// Delete custom database tables
+// Drop tabel pluginu przez klasę migracji (DRY — jeden punkt definicji nazw tabel).
+// drop_tables() usuwa również opcję ihumbak_wrs_db_version.
 global $wpdb;
-$table_name = $wpdb->prefix . 'woo_quick_ratings';
-$wpdb->query("DROP TABLE IF EXISTS {$table_name}");
-
-// Drop tabeli logów e-mail przez klasę migracji (DRY — jeden punkt definicji nazwy tabeli).
 require_once __DIR__ . '/database/class-database-migration.php';
-( new Ihumbak_WRS_Database_Migration() )->drop_email_log_table();
+$migration = new Ihumbak_WRS_Database_Migration();
+$migration->drop_tables();
+$migration->drop_email_log_table();
 
 // Delete plugin options
 delete_option('ihumbak_wrs_enabled');
@@ -34,7 +33,7 @@ delete_option('ihumbak_wrs_hide_count_in_loop');
 delete_option('ihumbak_wrs_star_color');
 delete_option('ihumbak_wrs_text_rate');
 delete_option('ihumbak_wrs_text_thanks');
-delete_option('ihumbak_wrs_db_version');
+// Uwaga: ihumbak_wrs_db_version jest usuwane przez drop_tables() powyżej.
 delete_option('ihumbak_wrs_remove_data_on_uninstall');
 
 // Delete email settings options (issue #3)
